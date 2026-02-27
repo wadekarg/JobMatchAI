@@ -68,13 +68,45 @@ Analysis results are cached per URL and use deterministic AI settings (temperatu
 
 ---
 
+## Prerequisites — You Need an AI API Key
+
+JobMatch AI uses generative AI to analyze resumes and job postings. **You'll need a free or paid API key** from any of the supported providers below.
+
+### Supported AI Providers
+
+| Provider | Free Tier | Get API Key |
+|----------|:---------:|-------------|
+| **Cerebras** | Yes | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
+| **Groq** | Yes | [console.groq.com](https://console.groq.com) |
+| **Google Gemini** | Yes | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **OpenRouter** | Yes | [openrouter.ai](https://openrouter.ai) |
+| **Mistral AI** | Yes | [console.mistral.ai](https://console.mistral.ai) |
+| **Together AI** | Yes | [api.together.ai](https://api.together.ai) |
+| **Cohere** | Yes | [dashboard.cohere.com](https://dashboard.cohere.com) |
+| Anthropic (Claude) | No | [console.anthropic.com](https://console.anthropic.com) |
+| OpenAI | No | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| DeepSeek | No | [platform.deepseek.com](https://platform.deepseek.com) |
+
+### How to Get a Free API Key (Cerebras Example)
+
+1. Go to [cloud.cerebras.ai](https://cloud.cerebras.ai) and sign up (Google or GitHub login works)
+2. Once logged in, go to **API Keys** in the dashboard
+3. Click **Create API Key**, give it a name, and copy the key (starts with `csk-...`)
+4. Paste it into JobMatch AI's Settings page — done!
+
+The same general process applies to all providers: **sign up → find API Keys in dashboard → create key → copy and paste into the extension**.
+
+> **Tip:** Cerebras, Groq, and Google Gemini offer the most generous free tiers. OpenRouter gives access to multiple free models through a single key.
+
+---
+
 ## Getting Started
 
 ### 1. Configure AI Provider
 
 Click the extension icon → **AI Settings** (or use the side panel's **Settings** nav link).
 
-- Select your AI provider (Anthropic/Claude recommended)
+- Select your AI provider (any from the table above)
 - Enter your API key
 - Choose a model
 - Click **Test Connection** to verify
