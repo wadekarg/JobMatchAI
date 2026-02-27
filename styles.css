@@ -1,0 +1,17 @@
+/* styles.css — Host element positioning for the Shadow DOM side panel */
+
+#jobmatch-ai-panel-host {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 100vh;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+}
+
+#jobmatch-ai-panel-host.open {
+  width: 380px;
+  pointer-events: auto;
+}

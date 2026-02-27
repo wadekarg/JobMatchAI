@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #f8f9fb;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 16px 20px;
+    }
+
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .header .subtitle { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+
+    .status-dot.connected { background: #10b981; }
+
+    .actions {
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary { background: #667eea; color: white; }
+    .btn-primary:hover { background: #5a6fd6; }
+    .btn-secondary { background: #e2e8f0; color: #475569; }
+    .btn-secondary:hover { background: #cbd5e1; }
+
+    .btn .icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .section-title {
+      padding: 0 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 8px;
+    }
+
+    .jobs-list {
+      padding: 8px 20px 16px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .job-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .job-item:hover { border-color: #667eea; background: #f8f9ff; }
+
+    .job-score {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .score-green { background: #10b981; }
+    .score-amber { background: #f59e0b; }
+    .score-red { background: #ef4444; }
+
+    .job-info { flex: 1; min-width: 0; }
+    .job-info .job-title {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .job-info .job-meta {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .job-delete {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 16px;
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+
+    .job-delete:hover { color: #dc2626; background: #fee2e2; }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .empty-state .icon { font-size: 28px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>JobMatch AI</h1>
+    <div class="subtitle">Smart Resume & Job Analyzer</div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Checking...</span>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="togglePanelBtn">
+      <span class="icon">&#9733;</span> Open Side Panel
+    </button>
+    <button class="btn btn-secondary" id="profileBtn">
+      <span class="icon">&#128100;</span> Profile & Resume
+    </button>
+    <button class="btn btn-secondary" id="settingsBtn">
+      <span class="icon">&#9881;</span> AI Settings
+    </button>
+  </div>
+
+  <div class="section-title">Saved Jobs</div>
+  <div class="jobs-list" id="jobsList">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">&#128188;</div>
+      <div>No saved jobs yet.<br>Analyze a job posting to get started.</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
