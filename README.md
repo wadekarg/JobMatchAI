@@ -176,6 +176,22 @@ JobMatchAI/
 
 ---
 
+## Contributing
+
+JobMatch AI is **free and open source** — built to help job seekers spend less time on repetitive tasks and more time landing the right role. If you find it useful, consider giving it a star!
+
+Contributions are welcome and encouraged. Whether it's fixing a bug, adding support for a new job site, improving the UI, or suggesting a feature — all help is appreciated.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/my-improvement`)
+3. Commit your changes (`git commit -m "Add my improvement"`)
+4. Push to the branch (`git push origin feature/my-improvement`)
+5. Open a Pull Request
+
+If you have ideas but aren't sure where to start, open an [issue](https://github.com/wadekarg/JobMatchAI/issues) — happy to discuss.
+
+---
+
 ## Privacy
 
 - Your resume data and API keys are stored **locally** in Chrome's storage — nothing is sent to any server except the AI provider you configure.
