@@ -7,6 +7,8 @@ import {
   buildJobAnalysisPrompt,
   buildAutofillPrompt,
   buildDropdownMatchPrompt,
+  buildCoverLetterPrompt,
+  buildBulletRewritePrompt,
   buildTestPrompt,
   DEFAULT_MODEL,
   DEFAULT_TEMPERATURE,
@@ -88,7 +90,9 @@ async function handleAnalyzeJob(jobDescription, jobTitle, company) {
     model: settings.model,
     temperature: 0
   });
-  return parseJSONResponse(result);
+  const parsed = parseJSONResponse(result);
+  if (jobDescription.length > maxLen) parsed.jdTruncated = true;
+  return parsed;
 }
 
 async function handleGenerateAutofill(formFields) {
@@ -204,6 +208,37 @@ async function handleMarkApplied(jobData) {
   return job;
 }
 
+async function handleGenerateCoverLetter(jobDescription, analysis) {
+  const settings = await getSettings();
+  if (!settings.apiKey) throw new Error('No API key configured. Go to Settings.');
+  const profile = await getProfile();
+  if (!profile) throw new Error('No resume profile found. Upload your resume first.');
+  const maxLen = 6000;
+  const truncatedJD = jobDescription.length > maxLen
+    ? jobDescription.substring(0, maxLen) + '\n...[truncated]'
+    : jobDescription;
+  const messages = buildCoverLetterPrompt(profile, truncatedJD, analysis);
+  return await callAI(settings.provider, settings.apiKey, messages, {
+    model: settings.model,
+    temperature: 0.4,
+    maxTokens: 700
+  });
+}
+
+async function handleRewriteBullets(jobDescription, missingSkills) {
+  const settings = await getSettings();
+  if (!settings.apiKey) throw new Error('No API key configured. Go to Settings.');
+  const profile = await getProfile();
+  if (!profile) throw new Error('No resume profile found. Upload your resume first.');
+  const messages = buildBulletRewritePrompt(profile, jobDescription, missingSkills);
+  const result = await callAI(settings.provider, settings.apiKey, messages, {
+    model: settings.model,
+    temperature: 0.2,
+    maxTokens: 2000
+  });
+  return parseJSONResponse(result);
+}
+
 async function handleDeleteAppliedJob(jobId) {
   const jobs = await getAppliedJobs();
   const filtered = jobs.filter(j => j.id !== jobId);
@@ -269,6 +304,12 @@ async function handleMessage(message, sender) {
     case 'GET_SAVED_JOBS':
       return getSavedJobs();
 
+    case 'GENERATE_COVER_LETTER':
+      return handleGenerateCoverLetter(message.jobDescription, message.analysis);
+
+    case 'REWRITE_BULLETS':
+      return handleRewriteBullets(message.jobDescription, message.missingSkills);
+
     case 'MARK_APPLIED':
       return handleMarkApplied(message.jobData);
 
@@ -316,6 +357,9 @@ chrome.runtime.onInstalled.addListener((details) => {
         temperature: DEFAULT_TEMPERATURE
       },
       profile: null,
+      profileSlots: [null, null, null],
+      activeProfileSlot: 0,
+      slotNames: ['Resume 1', 'Resume 2', 'Resume 3'],
       qaList: [],
       savedJobs: [],
       appliedJobs: []

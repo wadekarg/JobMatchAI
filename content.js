@@ -388,6 +388,151 @@
         transform: scale(1.1);
         box-shadow: 0 6px 16px rgba(102,126,234,0.5);
       }
+
+      /* Outline button */
+      .jm-btn-outline {
+        background: white;
+        border: 1.5px solid #667eea;
+        color: #667eea;
+      }
+      .jm-btn-outline:hover { background: #f0f2ff; }
+
+      /* Truncation notice */
+      .jm-trunc-notice {
+        font-size: 11px;
+        color: #92400e;
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 5px;
+        padding: 6px 10px;
+        margin-bottom: 10px;
+        display: none;
+      }
+
+      /* AutoFill preview */
+      .jm-preview-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        max-height: 240px;
+        overflow-y: auto;
+        margin-bottom: 4px;
+      }
+      .jm-preview-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 7px 8px;
+        background: white;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .jm-preview-row input[type="checkbox"] {
+        margin-top: 2px;
+        flex-shrink: 0;
+        accent-color: #667eea;
+        width: 14px;
+        height: 14px;
+      }
+      .jm-preview-label { font-weight: 600; color: #334155; }
+      .jm-preview-val { color: #64748b; word-break: break-word; }
+      .jm-preview-row.jm-needs-input { background: #fffbeb; border-color: #fde68a; }
+      .jm-preview-row.jm-needs-input .jm-preview-val { color: #92400e; }
+      .jm-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+      /* Cover letter */
+      .jm-cover-letter {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: #334155;
+        white-space: pre-wrap;
+        max-height: 260px;
+        overflow-y: auto;
+        margin-bottom: 8px;
+      }
+      .jm-copy-btn {
+        font-size: 12px;
+        padding: 5px 12px;
+        float: right;
+        margin-top: -2px;
+      }
+      .jm-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .jm-section-head h3 { margin-bottom: 0; }
+
+      /* Bullet rewriter */
+      .jm-bullet-item {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+      }
+      .jm-bullet-job {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #667eea;
+        margin-bottom: 6px;
+      }
+      .jm-bullet-before {
+        font-size: 12px;
+        color: #94a3b8;
+        text-decoration: line-through;
+        margin-bottom: 4px;
+        line-height: 1.5;
+      }
+      .jm-bullet-after {
+        font-size: 12px;
+        color: #1e293b;
+        margin-bottom: 7px;
+        line-height: 1.5;
+      }
+      .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
+
+      /* Job notes */
+      .jm-notes-section {
+        border-top: 1px solid #e2e8f0;
+        margin-top: 12px;
+        padding-top: 12px;
+      }
+      .jm-notes-section h3 {
+        font-size: 12px;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .jm-notes-textarea {
+        width: 100%;
+        resize: vertical;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        font-family: inherit;
+        color: #334155;
+        background: white;
+        min-height: 62px;
+        box-sizing: border-box;
+      }
+      .jm-notes-textarea:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
+      }
     `;
   }
 
@@ -422,6 +567,8 @@
           <button class="jm-btn jm-btn-secondary" id="jmAutofill">AutoFill Application</button>
           <button class="jm-btn jm-btn-success" id="jmSaveJob" style="display:none">Save Job</button>
           <button class="jm-btn jm-btn-applied" id="jmMarkApplied" style="display:none">Mark as Applied</button>
+          <button class="jm-btn jm-btn-outline" id="jmCoverLetterBtn" style="display:none">&#9993; Cover Letter</button>
+          <button class="jm-btn jm-btn-outline" id="jmRewriteBulletsBtn" style="display:none">&#9997; Improve Resume Bullets</button>
         </div>
 
         <div class="jm-score-section" id="jmScoreSection">
@@ -453,6 +600,42 @@
           <h3>ATS Keywords</h3>
           <div class="jm-tags" id="jmKeywords"></div>
         </div>
+
+        <!-- Truncation notice -->
+        <div class="jm-trunc-notice" id="jmTruncNotice">
+          &#9888; Job description was too long and was trimmed — match score may be approximate.
+        </div>
+
+        <!-- AutoFill preview -->
+        <div class="jm-section" id="jmAutofillPreview" style="display:none">
+          <h3>Review Autofill <span id="jmPreviewCount" style="font-weight:400;color:#64748b;text-transform:none;letter-spacing:0"></span></h3>
+          <div class="jm-preview-list" id="jmPreviewList"></div>
+          <div class="jm-preview-actions">
+            <button class="jm-btn jm-btn-primary" id="jmApplyFill" style="flex:1">Apply Selected</button>
+            <button class="jm-btn jm-btn-secondary" id="jmCancelFill">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Cover letter output -->
+        <div class="jm-section" id="jmCoverLetterSection" style="display:none">
+          <div class="jm-section-head">
+            <h3>Cover Letter</h3>
+            <button class="jm-btn jm-btn-secondary jm-copy-btn" id="jmCopyCoverLetter">Copy</button>
+          </div>
+          <div class="jm-cover-letter" id="jmCoverLetterText"></div>
+        </div>
+
+        <!-- Bullet rewriter output -->
+        <div class="jm-section" id="jmBulletSection" style="display:none">
+          <h3>Improved Resume Bullets</h3>
+          <div id="jmBulletList"></div>
+        </div>
+
+        <!-- Job notes (always visible) -->
+        <div class="jm-notes-section">
+          <h3>Notes</h3>
+          <textarea class="jm-notes-textarea" id="jmNotesInput" placeholder="Add notes about this job — saved automatically..."></textarea>
+        </div>
       </div>
     `;
   }
@@ -469,6 +652,21 @@
     panel.querySelector('#jmSaveJob').addEventListener('click', saveJob);
 
     panel.querySelector('#jmMarkApplied').addEventListener('click', markApplied);
+    panel.querySelector('#jmCoverLetterBtn').addEventListener('click', generateCoverLetter);
+    panel.querySelector('#jmRewriteBulletsBtn').addEventListener('click', rewriteBullets);
+    panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
+    panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
+    panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
+      const text = shadowRoot.getElementById('jmCoverLetterText').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = shadowRoot.getElementById('jmCopyCoverLetter');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      }).catch(() => {});
+    });
+    panel.querySelector('#jmNotesInput').addEventListener('blur', saveJobNotes);
+    panel.querySelector('#jmNotesInput').addEventListener('input', saveJobNotes);
 
     // Nav buttons → open profile page at the right tab
     panel.querySelectorAll('.jm-nav-btn').forEach(btn => {
@@ -512,6 +710,8 @@
       panelRoot.classList.add('open');
       panel.classList.add('open');
       if (toggleHost) toggleHost.style.display = 'none';
+      checkIfApplied();
+      loadJobNotes();
     } else {
       panel.classList.remove('open');
       panelRoot.classList.remove('open');
@@ -711,6 +911,8 @@
       showJobMeta(cached.title, cached.company, cached.location, cached.salary);
       renderAnalysis(cached.response);
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
+      shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
+      shadowRoot.getElementById('jmRewriteBulletsBtn').style.display = 'flex';
       btn.textContent = 'Re-Analyze';
       setStatus('Showing cached results.', 'success');
       setTimeout(clearStatus, 2000);
@@ -749,12 +951,20 @@
       renderAnalysis(response);
       clearStatus();
 
-      // Show save & applied buttons
+      // Show truncation notice if JD was trimmed
+      shadowRoot.getElementById('jmTruncNotice').style.display = response.jdTruncated ? 'block' : 'none';
+
+      // Show save, applied, cover letter, bullet rewriter buttons
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
       const appliedBtn = shadowRoot.getElementById('jmMarkApplied');
       if (appliedBtn.textContent !== 'Applied') {
         appliedBtn.style.display = 'flex';
       }
+      shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
+      shadowRoot.getElementById('jmRewriteBulletsBtn').style.display = 'flex';
+      // Reset any previous AI output sections
+      shadowRoot.getElementById('jmCoverLetterSection').style.display = 'none';
+      shadowRoot.getElementById('jmBulletSection').style.display = 'none';
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
@@ -917,6 +1127,8 @@
 
   // Module-level map: question_id → { element(s), actualType }
   let _fieldMap = {};
+  let _pendingAnswers = null;
+  let _pendingQuestions = [];
 
   async function autofillForm() {
     const btn = shadowRoot.getElementById('jmAutofill');
@@ -932,7 +1144,7 @@
         return;
       }
 
-      setStatus(`Found ${questions.length} questions. Getting AI suggestions...`, 'info');
+      setStatus(`Found ${questions.length} fields. Getting AI suggestions...`, 'info');
 
       // Step 2: send serializable questions to AI (no DOM refs)
       const questionsForAI = questions.map(q => {
@@ -947,17 +1159,109 @@
         formFields: questionsForAI
       });
 
-      // Step 3: fill using stored DOM refs — never trust AI field_type
+      // Step 3: show preview instead of filling immediately
       const answers = response.answers || response;
-      setStatus(`Filling fields...`, 'info');
-      const filled = await fillFormFromAnswers(answers);
-      setStatus(`Filled ${filled} of ${questions.length} fields. Review before submitting!`, 'success');
+      _pendingAnswers = answers;
+      _pendingQuestions = questions;
+      showAutofillPreview(answers, questions);
+      clearStatus();
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = 'AutoFill Application';
     }
+  }
+
+  function showAutofillPreview(answers, questions) {
+    const previewSection = shadowRoot.getElementById('jmAutofillPreview');
+    const list = shadowRoot.getElementById('jmPreviewList');
+    const countEl = shadowRoot.getElementById('jmPreviewCount');
+
+    list.innerHTML = '';
+
+    const questionMap = {};
+    questions.forEach(q => { questionMap[q.question_id] = q; });
+
+    let fillableCount = 0;
+    let needsInputCount = 0;
+
+    (Array.isArray(answers) ? answers : []).forEach(ans => {
+      const val = ans.selected_option || ans.generated_text || '';
+      const isNeeded = !val || val === 'NEEDS_USER_INPUT';
+      const qInfo = questionMap[ans.question_id];
+      const label = qInfo?.question_text || ans.question_id || '';
+
+      if (isNeeded) needsInputCount++;
+      else fillableCount++;
+
+      const row = document.createElement('div');
+      row.className = 'jm-preview-row' + (isNeeded ? ' jm-needs-input' : '');
+      row.dataset.qid = ans.question_id;
+
+      if (isNeeded) {
+        row.innerHTML = `
+          <div style="flex:1">
+            <div class="jm-preview-label">${escapeHTML(label)}</div>
+            <div class="jm-preview-val">&#9888; Needs manual input</div>
+          </div>`;
+      } else {
+        const displayVal = val.length > 70 ? val.substring(0, 70) + '…' : val;
+        row.innerHTML = `
+          <input type="checkbox" checked data-qid="${escapeHTML(ans.question_id)}">
+          <div style="flex:1;min-width:0">
+            <div class="jm-preview-label">${escapeHTML(label)}</div>
+            <div class="jm-preview-val" title="${escapeHTML(val)}">${escapeHTML(displayVal)}</div>
+          </div>`;
+      }
+      list.appendChild(row);
+    });
+
+    countEl.textContent = `— ${fillableCount} fillable, ${needsInputCount} need manual input`;
+    previewSection.style.display = 'block';
+    previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function applyAutofill() {
+    if (!_pendingAnswers) return;
+    const applyBtn = shadowRoot.getElementById('jmApplyFill');
+    applyBtn.disabled = true;
+    applyBtn.innerHTML = '<span class="jm-spinner"></span> Filling...';
+
+    try {
+      const checkedIds = new Set(
+        Array.from(shadowRoot.querySelectorAll('#jmPreviewList input[type="checkbox"]:checked'))
+          .map(cb => cb.dataset.qid)
+      );
+
+      const selectedAnswers = (Array.isArray(_pendingAnswers) ? _pendingAnswers : [])
+        .filter(a => checkedIds.has(a.question_id));
+
+      const { filled, skipped } = await fillFormFromAnswers(selectedAnswers);
+
+      let msg = `Filled ${filled} of ${selectedAnswers.length} selected fields.`;
+      if (skipped.length > 0) {
+        msg += ` ${skipped.length} could not be filled — check manually.`;
+      }
+      msg += ' Review before submitting!';
+      setStatus(msg, 'success');
+
+      shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
+      _pendingAnswers = null;
+      _pendingQuestions = [];
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    } finally {
+      applyBtn.disabled = false;
+      applyBtn.innerHTML = 'Apply Selected';
+    }
+  }
+
+  function cancelAutofill() {
+    shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
+    _pendingAnswers = null;
+    _pendingQuestions = [];
+    clearStatus();
   }
 
   // ─── Form field detection ─────────────────────────────────────
@@ -1232,15 +1536,21 @@
     }
 
     let filled = 0;
+    const skipped = [];
+
     for (const ans of answers) {
       const val = ans.selected_option || ans.generated_text || '';
-      if (!val || val === 'NEEDS_USER_INPUT') continue;
+      if (!val || val === 'NEEDS_USER_INPUT') {
+        skipped.push(ans.question_id);
+        continue;
+      }
       const qid = ans.question_id;
 
       try {
         const ref = _fieldMap[qid];
         if (!ref) {
           console.warn('[JobMatch] No DOM ref for', qid);
+          skipped.push(qid);
           continue;
         }
 
@@ -1270,11 +1580,17 @@
           fillSelectByText(ref.el, val, ref.optionMap, ref.optionTexts);
           filled++;
         } else if (ref.type === 'custom_dropdown') {
-          // For custom dropdowns: open → read real options → ask AI → click
-          // Pass the question text, not the bulk AI answer
-          if (await fillCustomDropdown(ref.el, ref.questionText || val)) filled++;
+          if (await fillCustomDropdown(ref.el, ref.questionText || val)) {
+            filled++;
+          } else {
+            skipped.push(qid);
+          }
         } else if (ref.type === 'radio') {
-          if (fillRadioFromRef(ref.radios, val)) filled++;
+          if (fillRadioFromRef(ref.radios, val)) {
+            filled++;
+          } else {
+            skipped.push(qid);
+          }
         } else if (ref.type === 'checkbox') {
           fillCheckboxFromRef(ref.el, val);
           filled++;
@@ -1284,9 +1600,10 @@
         }
       } catch (e) {
         console.warn('[JobMatch] Error filling', qid, e);
+        skipped.push(qid);
       }
     }
-    return filled;
+    return { filled, skipped };
   }
 
   async function fillFormLegacy(mapping) {
@@ -1304,7 +1621,7 @@
       }
       filled++;
     }
-    return filled;
+    return { filled, skipped: [] };
   }
 
   // ── Custom dropdown: open → read options → ask AI → click chosen option ──
@@ -1589,6 +1906,120 @@
   }
 
 
+  // ─── Cover letter ─────────────────────────────────────────────
+
+  async function generateCoverLetter() {
+    const btn = shadowRoot.getElementById('jmCoverLetterBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="jm-spinner"></span> Writing...';
+    try {
+      if (!currentAnalysis) throw new Error('Analyze the job first.');
+      const jd = extractJobDescription();
+      const text = await sendMessage({
+        type: 'GENERATE_COVER_LETTER',
+        jobDescription: jd,
+        analysis: {
+          matchingSkills: currentAnalysis.matchingSkills,
+          matchScore: currentAnalysis.matchScore
+        }
+      });
+      shadowRoot.getElementById('jmCoverLetterText').textContent = text;
+      const section = shadowRoot.getElementById('jmCoverLetterSection');
+      section.style.display = 'block';
+      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '&#9993; Cover Letter';
+    }
+  }
+
+  // ─── Bullet rewriter ──────────────────────────────────────────
+
+  async function rewriteBullets() {
+    const btn = shadowRoot.getElementById('jmRewriteBulletsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="jm-spinner"></span> Analyzing...';
+    try {
+      if (!currentAnalysis) throw new Error('Analyze the job first.');
+      const jd = extractJobDescription();
+      const bullets = await sendMessage({
+        type: 'REWRITE_BULLETS',
+        jobDescription: jd,
+        missingSkills: currentAnalysis.missingSkills || []
+      });
+
+      const list = shadowRoot.getElementById('jmBulletList');
+      list.innerHTML = '';
+
+      if (!Array.isArray(bullets) || bullets.length === 0) {
+        list.innerHTML = '<p style="font-size:12px;color:#64748b;">No bullet improvements generated. Try re-analyzing the job first.</p>';
+      } else {
+        bullets.forEach(b => {
+          const item = document.createElement('div');
+          item.className = 'jm-bullet-item';
+          item.innerHTML = `
+            <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
+            <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
+            <div class="jm-bullet-after">${escapeHTML(b.improved || '')}</div>
+            <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>`;
+          item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
+            navigator.clipboard.writeText(b.improved || '').then(() => {
+              const cb = item.querySelector('.jm-bullet-copy');
+              cb.textContent = 'Copied!';
+              setTimeout(() => { cb.textContent = 'Copy'; }, 1500);
+            }).catch(() => {});
+          });
+          list.appendChild(item);
+        });
+      }
+
+      const section = shadowRoot.getElementById('jmBulletSection');
+      section.style.display = 'block';
+      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '&#9997; Improve Resume Bullets';
+    }
+  }
+
+  // ─── Job notes ────────────────────────────────────────────────
+
+  const NOTES_STORAGE_KEY = 'jm_jobNotes';
+
+  async function loadJobNotes() {
+    try {
+      const url = window.location.href;
+      const result = await chrome.storage.local.get(NOTES_STORAGE_KEY);
+      const notes = result[NOTES_STORAGE_KEY] || {};
+      const textarea = shadowRoot && shadowRoot.getElementById('jmNotesInput');
+      if (textarea) textarea.value = notes[url] || '';
+    } catch (e) { /* ignore */ }
+  }
+
+  async function saveJobNotes() {
+    try {
+      const url = window.location.href;
+      const textarea = shadowRoot && shadowRoot.getElementById('jmNotesInput');
+      if (!textarea) return;
+      const result = await chrome.storage.local.get(NOTES_STORAGE_KEY);
+      const notes = result[NOTES_STORAGE_KEY] || {};
+      const val = textarea.value.trim();
+      if (val) {
+        notes[url] = val;
+      } else {
+        delete notes[url];
+      }
+      // Prune to 200 entries
+      const keys = Object.keys(notes);
+      if (keys.length > 200) keys.slice(0, keys.length - 200).forEach(k => delete notes[k]);
+      await chrome.storage.local.set({ [NOTES_STORAGE_KEY]: notes });
+    } catch (e) { /* ignore */ }
+  }
+
   // ─── Message handling ─────────────────────────────────────────
 
   function sendMessage(msg) {
@@ -1647,6 +2078,32 @@
 
   createPanel();
   createToggleButton();
+
+  // ─── SPA URL change detection (LinkedIn, Indeed, etc.) ────────
+  let _lastUrl = window.location.href;
+  new MutationObserver(() => {
+    const currentUrl = window.location.href;
+    if (currentUrl === _lastUrl) return;
+    _lastUrl = currentUrl;
+    currentAnalysis = null;
+    _pendingAnswers = null;
+    if (shadowRoot && panelOpen) {
+      const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
+      if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
+      [
+        'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
+        'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice',
+        'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
+        'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
+      ].forEach(id => {
+        const el = shadowRoot.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      loadJobNotes();
+      setStatus('New job detected — click Analyze Job.', 'info');
+      setTimeout(clearStatus, 3000);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
   checkIfApplied();
 
 })();

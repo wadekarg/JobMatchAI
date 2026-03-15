@@ -109,7 +109,7 @@ const PROVIDERS = {
     keyPlaceholder: 'sk-or-...',
     hint: 'Get key at openrouter.ai — Aggregator with free models',
     free: true,
-    extraHeaders: { 'HTTP-Referer': 'chrome-extension://jobmatch-ai', 'X-Title': 'JobMatch AI' },
+    extraHeaders: { 'HTTP-Referer': 'https://github.com/wadekarg/JobMatchAI', 'X-Title': 'JobMatch AI' },
     models: [
       { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)' },
       { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (Free)' },
@@ -594,6 +594,69 @@ No quotes. No explanation. No number. Just the option text exactly as written.`
   ];
 }
 
+function buildCoverLetterPrompt(resumeData, jobDescription, analysis) {
+  const resumeText = typeof resumeData === 'string' ? resumeData : JSON.stringify(resumeData, null, 2);
+  const matchingSkills = (analysis?.matchingSkills || []).slice(0, 6).join(', ');
+  return [
+    {
+      role: 'user',
+      content: `Write a professional cover letter for this job application.
+
+RULES:
+- Exactly 3 paragraphs: compelling opening (why this role/company), skills + experience match (reference 2-3 specific skills from the resume), closing call to action
+- Tailored to the actual job title and company — no generic filler
+- 200-250 words. No clichés like "I am a hard worker"
+- Do NOT include address headers, date lines, "Dear Hiring Manager", signature, or any [placeholders]
+- Start directly with the first sentence of paragraph one
+
+RESUME:
+${resumeText}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+CANDIDATE'S MATCHING SKILLS: ${matchingSkills || 'see resume'}
+
+Return ONLY the cover letter body text. No JSON, no markdown, no extra commentary.`
+    }
+  ];
+}
+
+function buildBulletRewritePrompt(resumeData, jobDescription, missingSkills) {
+  const experience = (typeof resumeData === 'object' && resumeData.experience)
+    ? resumeData.experience.map(e => `${e.title || ''} at ${e.company || ''}:\n${e.description || ''}`).join('\n\n')
+    : (typeof resumeData === 'string' ? resumeData : JSON.stringify(resumeData));
+  const missing = (missingSkills || []).join(', ');
+
+  return [
+    {
+      role: 'user',
+      content: `Suggest improved resume bullet points to better match this job description.
+
+RULES:
+- Rewrite existing bullets — never fabricate experience, numbers, or results that aren't already implied
+- Weave in JD keywords and action verbs naturally
+- Focus especially on incorporating these missing skills where they fit: ${missing || 'none identified'}
+- Return JSON only — no markdown, no commentary
+
+CURRENT EXPERIENCE:
+${experience}
+
+JOB DESCRIPTION (excerpt):
+${jobDescription.substring(0, 3000)}
+
+Return ONLY a JSON array:
+[
+  {
+    "job": "Job Title at Company",
+    "original": "The original bullet text",
+    "improved": "The improved bullet with better keywords"
+  }
+]`
+    }
+  ];
+}
+
 function buildTestPrompt() {
   return [
     {
@@ -613,6 +676,8 @@ export {
   buildJobAnalysisPrompt,
   buildAutofillPrompt,
   buildDropdownMatchPrompt,
+  buildCoverLetterPrompt,
+  buildBulletRewritePrompt,
   buildTestPrompt,
   DEFAULT_MODEL,
   DEFAULT_TEMPERATURE,

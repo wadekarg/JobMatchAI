@@ -452,6 +452,45 @@
       color: #64748b;
       margin-bottom: 16px;
     }
+
+    /* Profile slot switcher */
+    .slot-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .profile-slot-btn { background: #e2e8f0; color: #475569; border: 2px solid transparent; }
+    .profile-slot-btn:hover { background: #cbd5e1; }
+    .profile-slot-btn.active { background: #667eea; color: white; border-color: #5a6fd6; }
+    .profile-slot-btn.has-data::after { content: ' ●'; font-size: 9px; opacity: 0.7; }
+
+    /* Stats dashboard */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      text-align: center;
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 18px 12px;
+      border: 1px solid #e2e8f0;
+    }
+    .stat-card .stat-value { font-size: 34px; font-weight: 700; color: #667eea; line-height: 1; }
+    .stat-card .stat-label { font-size: 12px; color: #64748b; margin-top: 5px; }
+    .stat-section-title {
+      font-size: 14px; font-weight: 600; color: #334155;
+      margin: 20px 0 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;
+    }
+    .skill-freq-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .skill-freq-name { font-size: 13px; color: #334155; min-width: 130px; }
+    .skill-freq-track { flex: 1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .skill-freq-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.4s ease; }
+    .skill-freq-count { font-size: 12px; color: #94a3b8; min-width: 28px; text-align: right; }
+    .score-dist { display: flex; gap: 8px; margin: 12px 0; }
+    .score-dist-bar {
+      flex: 1; text-align: center; border-radius: 8px;
+      padding: 10px 4px; font-size: 13px; font-weight: 700;
+    }
+    .score-dist-bar small { display: block; font-size: 10px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -466,12 +505,33 @@
     <div class="tab active" data-tab="profile">Profile</div>
     <div class="tab" data-tab="qa">Q&A Answers</div>
     <div class="tab" data-tab="applied">Applied Jobs</div>
+    <div class="tab" data-tab="stats">Stats</div>
     <div class="tab" data-tab="settings">AI Settings</div>
   </div>
 
   <div class="container">
     <!-- ─── Profile Tab ─────────────────────────────────── -->
     <div class="tab-content active" id="tab-profile">
+
+      <!-- Profile slot switcher -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <h2 style="margin-bottom:3px;">Active Resume Profile</h2>
+            <p style="font-size:12px;color:#64748b;margin:0;">Switch between up to 3 resume versions for different job types.</p>
+          </div>
+          <div class="slot-btns" id="profileSlotBtns">
+            <button class="btn btn-sm profile-slot-btn active" data-slot="0">Resume 1</button>
+            <button class="btn btn-sm profile-slot-btn" data-slot="1">Resume 2</button>
+            <button class="btn btn-sm profile-slot-btn" data-slot="2">Resume 3</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+          <input type="text" id="slotNameInput" placeholder="Name this profile, e.g. Software Engineer…" style="margin-bottom:0;flex:1;">
+          <button class="btn btn-secondary btn-sm" id="saveSlotNameBtn">Rename</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Upload Resume</h2>
         <div class="upload-zone" id="uploadZone">
@@ -575,6 +635,16 @@
         <button class="btn btn-secondary btn-sm" id="addQABtn">+ Add Q&A</button>
         <div style="text-align: right; margin-top: 16px;">
           <button class="btn btn-primary" id="saveQABtn">Save Q&A Answers</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Stats Tab ───────────────────────────────────── -->
+    <div class="tab-content" id="tab-stats">
+      <div class="card">
+        <h2>Job Search Stats</h2>
+        <div id="statsContent">
+          <p style="color:#94a3b8;text-align:center;padding:30px 0;">Click the Stats tab to load your stats.</p>
         </div>
       </div>
     </div>

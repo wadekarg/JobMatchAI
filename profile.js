@@ -56,6 +56,8 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'applied') loadAppliedJobs();
+    if (tab.dataset.tab === 'stats') renderStats();
   });
 });
 
@@ -371,6 +373,10 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
 
   try {
     await sendMessage({ type: 'SAVE_PROFILE', profile: profileData });
+    // Also save into the active slot
+    profileSlots[activeSlot] = JSON.parse(JSON.stringify(profileData));
+    await chrome.storage.local.set({ profileSlots });
+    updateSlotButtons();
     showToast('Profile saved!');
   } catch (err) {
     showToast('Error saving: ' + err.message);
@@ -755,6 +761,8 @@ async function init() {
 
     // Pre-load applied jobs
     loadAppliedJobs();
+    // Load profile slot state
+    await loadProfileSlots();
   } catch (err) {
     console.error('Init error:', err);
   }
@@ -846,18 +854,179 @@ function renderAppliedJobs(jobs) {
   });
 }
 
+// ─── Profile slot management ─────────────────────────────────────────
+
+let activeSlot = 0;
+let profileSlots = [null, null, null];
+let slotNames = ['Resume 1', 'Resume 2', 'Resume 3'];
+
+function syncCurrentProfileFromForm() {
+  profileData.name = document.getElementById('pName').value.trim();
+  profileData.email = document.getElementById('pEmail').value.trim();
+  profileData.phone = document.getElementById('pPhone').value.trim();
+  profileData.location = document.getElementById('pLocation').value.trim();
+  profileData.linkedin = document.getElementById('pLinkedin').value.trim();
+  profileData.website = document.getElementById('pWebsite').value.trim();
+  profileData.summary = document.getElementById('pSummary').value.trim();
+}
+
+function updateSlotButtons() {
+  document.querySelectorAll('.profile-slot-btn').forEach(btn => {
+    const slot = parseInt(btn.dataset.slot);
+    btn.classList.toggle('active', slot === activeSlot);
+    btn.classList.toggle('has-data', !!profileSlots[slot]);
+    btn.textContent = slotNames[slot] || `Resume ${slot + 1}`;
+  });
+  document.getElementById('slotNameInput').value = slotNames[activeSlot] || '';
+}
+
+async function loadProfileSlots() {
+  try {
+    const result = await chrome.storage.local.get(['profileSlots', 'activeProfileSlot', 'slotNames']);
+    profileSlots = result.profileSlots || [null, null, null];
+    activeSlot = result.activeProfileSlot || 0;
+    slotNames = result.slotNames || ['Resume 1', 'Resume 2', 'Resume 3'];
+    updateSlotButtons();
+  } catch (e) { /* ignore */ }
+}
+
+document.querySelectorAll('.profile-slot-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const newSlot = parseInt(btn.dataset.slot);
+    if (newSlot === activeSlot) return;
+
+    // Save current slot data before switching
+    syncCurrentProfileFromForm();
+    profileSlots[activeSlot] = JSON.parse(JSON.stringify(profileData));
+    activeSlot = newSlot;
+
+    const newProfile = profileSlots[activeSlot];
+    if (newProfile) {
+      profileData = JSON.parse(JSON.stringify(newProfile));
+      populateProfileForm();
+      const displayName = profileData.resumeFileName || profileData.name || 'Resume';
+      showResumeLoaded(displayName);
+    } else {
+      profileData = { name: '', email: '', phone: '', location: '', linkedin: '', website: '',
+        summary: '', skills: [], experience: [], education: [], certifications: [], projects: [] };
+      populateProfileForm();
+      document.getElementById('uploadZone').innerHTML = `
+        <div class="icon">&#128196;</div>
+        <div class="text">Drag & drop your resume or click to browse</div>
+        <div class="hint">Supports PDF and DOCX</div>`;
+    }
+
+    await chrome.storage.local.set({
+      profileSlots,
+      activeProfileSlot: activeSlot,
+      profile: profileSlots[activeSlot] || null
+    });
+    updateSlotButtons();
+    showToast(`Switched to ${slotNames[activeSlot]}.`);
+  });
+});
+
+document.getElementById('saveSlotNameBtn').addEventListener('click', async () => {
+  const name = document.getElementById('slotNameInput').value.trim();
+  if (!name) return;
+  slotNames[activeSlot] = name;
+  await chrome.storage.local.set({ slotNames });
+  updateSlotButtons();
+  showToast('Profile renamed.');
+});
+
+// ─── Stats dashboard ─────────────────────────────────────────────────
+
+async function renderStats() {
+  const container = document.getElementById('statsContent');
+  if (!container) return;
+  container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px;">Loading…</p>';
+  try {
+    const result = await chrome.storage.local.get(['jm_analysisCache', 'appliedJobs']);
+    const cache = result.jm_analysisCache || {};
+    const applied = result.appliedJobs || [];
+    const analyses = Object.values(cache);
+
+    const scores = analyses.map(a => a.analysis?.matchScore).filter(s => typeof s === 'number');
+    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    const scoreColor = avgScore === null ? '#94a3b8' : avgScore >= 70 ? '#059669' : avgScore >= 45 ? '#d97706' : '#dc2626';
+
+    const skillCounts = {};
+    analyses.forEach(a => {
+      (a.analysis?.missingSkills || []).forEach(s => {
+        skillCounts[s] = (skillCounts[s] || 0) + 1;
+      });
+    });
+    const topMissing = Object.entries(skillCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    if (analyses.length === 0) {
+      container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:30px 0;">No jobs analyzed yet. Visit a job posting and click Analyze Job in the side panel.</p>';
+      return;
+    }
+
+    const green = scores.filter(s => s >= 70).length;
+    const amber = scores.filter(s => s >= 45 && s < 70).length;
+    const red = scores.filter(s => s < 45).length;
+
+    let html = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">${analyses.length}</div>
+          <div class="stat-label">Jobs Analyzed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${applied.length}</div>
+          <div class="stat-label">Jobs Applied</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:${scoreColor}">${avgScore !== null ? avgScore + '%' : '—'}</div>
+          <div class="stat-label">Avg Match Score</div>
+        </div>
+      </div>`;
+
+    if (scores.length > 0) {
+      html += `
+        <div class="stat-section-title">Score Distribution</div>
+        <div class="score-dist">
+          <div class="score-dist-bar" style="background:#d1fae5;color:#059669">${green}<small>Strong ≥70</small></div>
+          <div class="score-dist-bar" style="background:#fef3c7;color:#92400e">${amber}<small>Good 45–69</small></div>
+          <div class="score-dist-bar" style="background:#fee2e2;color:#dc2626">${red}<small>Low &lt;45</small></div>
+        </div>`;
+    }
+
+    if (topMissing.length > 0) {
+      const maxCount = topMissing[0][1];
+      html += `<div class="stat-section-title">Skills to Add to Your Resume</div>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:12px;">Appears as missing across your analyzed jobs.</p>`;
+      topMissing.forEach(([skill, count]) => {
+        const pct = Math.round((count / maxCount) * 100);
+        html += `
+          <div class="skill-freq-bar">
+            <div class="skill-freq-name">${escapeHTML(skill)}</div>
+            <div class="skill-freq-track"><div class="skill-freq-fill" style="width:${pct}%"></div></div>
+            <div class="skill-freq-count">${count}x</div>
+          </div>`;
+      });
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p style="color:#dc2626;">Error loading stats: ${escapeHTML(err.message)}</p>`;
+  }
+}
+
 // ─── Handle hash navigation (e.g. profile.html#settings) ────────────
 
 function handleHash() {
   const hash = window.location.hash.replace('#', '');
-  const validTabs = ['profile', 'qa', 'applied', 'settings'];
+  const validTabs = ['profile', 'qa', 'applied', 'stats', 'settings'];
   if (validTabs.includes(hash)) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.querySelector('[data-tab="' + hash + '"]').classList.add('active');
     document.getElementById('tab-' + hash).classList.add('active');
-    // Load applied jobs when that tab is shown
     if (hash === 'applied') loadAppliedJobs();
+    if (hash === 'stats') renderStats();
   }
 }
 
