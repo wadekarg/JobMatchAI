@@ -367,26 +367,32 @@
       /* Toggle button (outside panel) */
       .jm-toggle {
         position: fixed;
-        right: 16px;
-        bottom: 24px;
         width: 48px;
         height: 48px;
         border-radius: 50%;
         background: linear-gradient(135deg, #667eea, #764ba2);
         color: white;
         border: none;
-        cursor: pointer;
+        cursor: grab;
         box-shadow: 0 4px 12px rgba(102,126,234,0.4);
         font-size: 20px;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.2s;
+        transition: box-shadow 0.2s, transform 0.2s;
         z-index: 2147483646;
+        user-select: none;
+        touch-action: none;
       }
       .jm-toggle:hover {
         transform: scale(1.1);
         box-shadow: 0 6px 16px rgba(102,126,234,0.5);
+      }
+      .jm-toggle.dragging {
+        cursor: grabbing;
+        transform: scale(1.1);
+        box-shadow: 0 8px 20px rgba(102,126,234,0.6);
+        transition: none;
       }
 
       /* Outline button */
@@ -683,9 +689,80 @@
     const btn = document.createElement('button');
     btn.className = 'jm-toggle';
     btn.id = 'jobmatch-ai-toggle';
-    btn.innerHTML = '&#9733;'; // star
+    btn.innerHTML = '&#9733;';
     btn.title = 'JobMatch AI';
-    btn.addEventListener('click', togglePanel);
+
+    // Restore saved position or default to bottom-right
+    const saved = (() => {
+      try { return JSON.parse(localStorage.getItem('jm_btn_pos')); } catch { return null; }
+    })();
+    btn.style.right  = saved ? 'auto' : '16px';
+    btn.style.bottom = saved ? 'auto' : '24px';
+    btn.style.left   = saved ? saved.left + 'px' : 'auto';
+    btn.style.top    = saved ? saved.top  + 'px' : 'auto';
+
+    // ── Drag logic ──
+    let dragging = false, startX, startY, startLeft, startTop;
+
+    function getPos() {
+      const r = btn.getBoundingClientRect();
+      return { left: r.left, top: r.top };
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const newLeft = Math.min(Math.max(0, startLeft + cx - startX), window.innerWidth  - 48);
+      const newTop  = Math.min(Math.max(0, startTop  + cy - startY), window.innerHeight - 48);
+      btn.style.right  = 'auto';
+      btn.style.bottom = 'auto';
+      btn.style.left   = newLeft + 'px';
+      btn.style.top    = newTop  + 'px';
+    }
+
+    function onEnd(e) {
+      if (!dragging) return;
+      dragging = false;
+      btn.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend',  onEnd);
+      const pos = getPos();
+      try { localStorage.setItem('jm_btn_pos', JSON.stringify(pos)); } catch {}
+    }
+
+    btn.addEventListener('mousedown', e => {
+      const pos = getPos();
+      startX = e.clientX; startY = e.clientY;
+      startLeft = pos.left; startTop = pos.top;
+      dragging = true;
+      btn.classList.add('dragging');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onEnd);
+      e.preventDefault();
+    });
+
+    btn.addEventListener('touchstart', e => {
+      const pos = getPos();
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      startLeft = pos.left; startTop = pos.top;
+      dragging = true;
+      btn.classList.add('dragging');
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend',  onEnd);
+      e.preventDefault();
+    }, { passive: false });
+
+    // Only fire click if not dragged
+    btn.addEventListener('click', e => {
+      const pos = getPos();
+      const moved = saved
+        ? Math.abs(pos.left - startLeft) > 4 || Math.abs(pos.top - startTop) > 4
+        : false;
+      if (!moved) togglePanel();
+    });
 
     // Attach to shadow root for isolation
     const host = document.createElement('div');
@@ -731,6 +808,12 @@
     const el = shadowRoot.getElementById('jmStatus');
     el.className = 'jm-status';
     el.style.display = 'none';
+  }
+
+  function scrollPanelTo(el) {
+    const body = shadowRoot.querySelector('.jm-body');
+    if (!body) return;
+    body.scrollTo({ top: el.offsetTop - 10, behavior: 'smooth' });
   }
 
   // ─── Job description extraction ───────────────────────────────
@@ -1219,7 +1302,7 @@
 
     countEl.textContent = `— ${fillableCount} fillable, ${needsInputCount} need manual input`;
     previewSection.style.display = 'block';
-    previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    scrollPanelTo(previewSection);
   }
 
   async function applyAutofill() {
@@ -1468,7 +1551,6 @@
       qIndex++;
     });
 
-    console.log('[JobMatch] Detected fields:', questions.map(q => `${q.question_id}(${q.field_type}${q.available_options ? ':' + q.available_options.length + 'opts' : ''})`));
     return questions;
   }
 
@@ -1549,12 +1631,10 @@
       try {
         const ref = _fieldMap[qid];
         if (!ref) {
-          console.warn('[JobMatch] No DOM ref for', qid);
           skipped.push(qid);
           continue;
         }
 
-        console.log('[JobMatch] Filling', qid, 'type:', ref.type, 'val:', val);
 
         // Route by ACTUAL element type
         if (ref.type === 'dropdown') {
@@ -1573,7 +1653,6 @@
                 continue;
               }
             } catch (e) {
-              console.warn('[JobMatch] Deterministic/AI match failed for select, using AI autofill value:', e.message);
             }
           }
           // Fallback: use the bulk AI answer directly
@@ -1599,7 +1678,6 @@
           filled++;
         }
       } catch (e) {
-        console.warn('[JobMatch] Error filling', qid, e);
         skipped.push(qid);
       }
     }
@@ -1626,7 +1704,6 @@
 
   // ── Custom dropdown: open → read options → ask AI → click chosen option ──
   async function fillCustomDropdown(input, questionText) {
-    console.log('[JobMatch] Custom dropdown:', questionText);
 
     // Step 1: Click to open the dropdown
     input.focus();
@@ -1638,14 +1715,12 @@
     // Step 2: Read all visible option elements from the live DOM
     const optionEls = findVisibleOptions(input);
     if (optionEls.length === 0) {
-      console.warn('[JobMatch] No options found for:', questionText);
       // Close the dropdown
       document.body.click();
       return false;
     }
 
     const optionTexts = optionEls.map(o => o.text);
-    console.log('[JobMatch] Found', optionTexts.length, 'options:', optionTexts.slice(0, 5), '...');
 
     // Step 3: Ask AI to pick the best option
     let aiChoice;
@@ -1656,12 +1731,10 @@
         options: optionTexts
       });
     } catch (e) {
-      console.warn('[JobMatch] AI match failed:', e.message);
       document.body.click();
       return false;
     }
 
-    console.log('[JobMatch] AI chose:', aiChoice);
 
     if (!aiChoice || aiChoice === 'SKIP' || aiChoice === 'NEEDS_USER_INPUT') {
       document.body.click();
@@ -1676,7 +1749,6 @@
     for (const opt of optionEls) {
       if (opt.text.toLowerCase().trim() === choiceLower) {
         clickElement(opt.el);
-        console.log('[JobMatch] SELECTED:', opt.text);
         await sleep(200);
         return true;
       }
@@ -1686,7 +1758,6 @@
     for (const opt of optionEls) {
       if (opt.text.toLowerCase().replace(/[^a-z0-9]/g, '') === choiceNorm) {
         clickElement(opt.el);
-        console.log('[JobMatch] SELECTED (normalized):', opt.text);
         await sleep(200);
         return true;
       }
@@ -1697,13 +1768,11 @@
       const optLower = opt.text.toLowerCase().trim();
       if (optLower.includes(choiceLower) || choiceLower.includes(optLower)) {
         clickElement(opt.el);
-        console.log('[JobMatch] SELECTED (partial):', opt.text);
         await sleep(200);
         return true;
       }
     }
 
-    console.warn('[JobMatch] Could not find AI choice in options:', aiChoice);
     document.body.click();
     return false;
   }
@@ -1768,7 +1837,6 @@
     if (optionMap && optionMap[textLower] !== undefined) {
       select.value = optionMap[textLower];
       fireEvents(select);
-      console.log('[JobMatch] SELECT exact text match:', text);
       return;
     }
 
@@ -1782,7 +1850,6 @@
       if (opt.value === text || opt.value.toLowerCase() === textLower) {
         select.value = opt.value;
         fireEvents(select);
-        console.log('[JobMatch] SELECT value match:', text);
         return;
       }
     }
@@ -1794,7 +1861,6 @@
       if (norm(opt.textContent) === textNorm) {
         select.value = opt.value;
         fireEvents(select);
-        console.log('[JobMatch] SELECT normalized match:', text, '→', opt.textContent.trim());
         return;
       }
     }
@@ -1805,7 +1871,6 @@
       if (optText.includes(textLower) || textLower.includes(optText)) {
         select.value = opt.value;
         fireEvents(select);
-        console.log('[JobMatch] SELECT partial match:', text, '→', opt.textContent.trim());
         return;
       }
     }
@@ -1831,11 +1896,9 @@
     if (bestOpt && bestScore >= 3) {
       select.value = bestOpt.value;
       fireEvents(select);
-      console.log('[JobMatch] SELECT fuzzy match:', text, '→', bestOpt.textContent.trim(), 'score:', bestScore);
       return;
     }
 
-    console.warn('[JobMatch] SELECT no match for:', text, 'in', optionTexts);
   }
 
   // ── Radio: use stored refs directly ──
@@ -1926,7 +1989,7 @@
       shadowRoot.getElementById('jmCoverLetterText').textContent = text;
       const section = shadowRoot.getElementById('jmCoverLetterSection');
       section.style.display = 'block';
-      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      scrollPanelTo(section);
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
@@ -1941,6 +2004,10 @@
     const btn = shadowRoot.getElementById('jmRewriteBulletsBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="jm-spinner"></span> Analyzing...';
+    const section = shadowRoot.getElementById('jmBulletSection');
+    const list = shadowRoot.getElementById('jmBulletList');
+    list.innerHTML = '';
+    section.style.display = 'block';
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
       const jd = extractJobDescription();
@@ -1950,11 +2017,8 @@
         missingSkills: currentAnalysis.missingSkills || []
       });
 
-      const list = shadowRoot.getElementById('jmBulletList');
-      list.innerHTML = '';
-
       if (!Array.isArray(bullets) || bullets.length === 0) {
-        list.innerHTML = '<p style="font-size:12px;color:#64748b;">No bullet improvements generated. Try re-analyzing the job first.</p>';
+        list.innerHTML = '<p style="font-size:12px;color:#64748b;">No bullet improvements generated. Your resume experience section may be empty or the AI could not suggest improvements.</p>';
       } else {
         bullets.forEach(b => {
           const item = document.createElement('div');
@@ -1974,13 +2038,10 @@
           list.appendChild(item);
         });
       }
-
-      const section = shadowRoot.getElementById('jmBulletSection');
-      section.style.display = 'block';
-      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
-      setStatus('Error: ' + err.message, 'error');
+      list.innerHTML = `<p style="font-size:12px;color:#dc2626;">Error: ${escapeHTML(err.message)}</p>`;
     } finally {
+      scrollPanelTo(section);
       btn.disabled = false;
       btn.innerHTML = '&#9997; Improve Resume Bullets';
     }

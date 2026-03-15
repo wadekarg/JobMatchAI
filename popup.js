@@ -131,7 +131,6 @@ async function loadJobs() {
       list.appendChild(item);
     });
   } catch (err) {
-    console.error('Error loading jobs:', err);
   }
 }
 

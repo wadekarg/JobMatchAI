@@ -119,7 +119,6 @@ async function handleMatchDropdown(questionText, options) {
   // ── Step 1: Try deterministic matching FIRST (no AI call) ──
   const deterMatch = deterministicFieldMatcher(questionText, options, qaList, profile);
   if (deterMatch.matched && deterMatch.option) {
-    console.log('[JobMatch BG] Deterministic match:', deterMatch.topic, '→', deterMatch.option);
     return deterMatch.option;
   }
 
@@ -127,7 +126,6 @@ async function handleMatchDropdown(questionText, options) {
   const settings = await getSettings();
   if (!settings.apiKey) throw new Error('No API key configured.');
 
-  console.log('[JobMatch BG] AI fallback for:', questionText, '(topic:', deterMatch.topic || 'unknown', ')');
   const messages = buildDropdownMatchPrompt(profile, qaList, questionText, options);
   const result = await callAI(settings.provider, settings.apiKey, messages, {
     model: settings.model,
@@ -147,8 +145,7 @@ async function handleMatchDropdown(questionText, options) {
     if (optLower.includes(choiceLower) || choiceLower.includes(optLower)) return opt;
   }
 
-  console.warn('[JobMatch BG] AI returned unmatched option:', aiChoice, 'from:', options);
-  return aiChoice;
+  return null; // AI returned something that doesn't match any option — leave field unfilled
 }
 
 async function handleSaveJob(jobData) {
@@ -230,13 +227,26 @@ async function handleRewriteBullets(jobDescription, missingSkills) {
   if (!settings.apiKey) throw new Error('No API key configured. Go to Settings.');
   const profile = await getProfile();
   if (!profile) throw new Error('No resume profile found. Upload your resume first.');
+
+  // Check that the profile actually has experience with descriptions
+  const hasExperience = Array.isArray(profile.experience) &&
+    profile.experience.some(e => e.description && e.description.trim().length > 10);
+  if (!hasExperience) {
+    throw new Error('No experience bullets found in your resume profile. Make sure your resume was parsed correctly with job descriptions.');
+  }
+
   const messages = buildBulletRewritePrompt(profile, jobDescription, missingSkills);
   const result = await callAI(settings.provider, settings.apiKey, messages, {
     model: settings.model,
     temperature: 0.2,
-    maxTokens: 2000
+    maxTokens: 4096
   });
-  return parseJSONResponse(result);
+
+  try {
+    return parseJSONResponse(result);
+  } catch (_) {
+    throw new Error('AI response was truncated or invalid. Try a model with a larger output limit.');
+  }
 }
 
 async function handleDeleteAppliedJob(jobId) {

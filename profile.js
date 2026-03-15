@@ -550,14 +550,14 @@ const DEFAULT_QA_QUESTIONS = [
 
   // ── Demographics / EEO (Voluntary) ──
   // Clean question names — no examples that could confuse the AI
-  { question: 'Gender', answer: '', category: 'demographics', type: 'short' },
-  { question: 'Gender identity', answer: '', category: 'demographics', type: 'short' },
-  { question: 'Sexual orientation', answer: '', category: 'demographics', type: 'short' },
-  { question: 'Pronouns', answer: '', category: 'demographics', type: 'short' },
-  { question: 'Race / Ethnicity', answer: '', category: 'demographics', type: 'short' },
+  { question: 'Gender', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'Male', 'Female', 'Non-binary', 'Other', 'Prefer not to say'] },
+  { question: 'Gender identity', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'Man', 'Woman', 'Non-binary', 'Genderqueer / Genderfluid', 'Agender', 'Two-Spirit', 'Other', 'Prefer not to say'] },
+  { question: 'Sexual orientation', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'Straight / Heterosexual', 'Gay or Lesbian', 'Bisexual', 'Pansexual', 'Asexual', 'Queer', 'Other', 'Prefer not to say'] },
+  { question: 'Pronouns', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'He/Him', 'She/Her', 'They/Them', 'He/They', 'She/They', 'Other', 'Prefer not to say'] },
+  { question: 'Race / Ethnicity', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'American Indian or Alaska Native', 'Asian', 'Black or African American', 'Hispanic or Latino', 'Native Hawaiian or Pacific Islander', 'White', 'Two or more races', 'Other', 'Prefer not to say'] },
   { question: 'Are you Hispanic or Latino?', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'Yes', 'No', 'Decline to self-identify'] },
-  { question: 'Veteran status', answer: '', category: 'demographics', type: 'short' },
-  { question: 'Disability status', answer: '', category: 'demographics', type: 'short' },
+  { question: 'Veteran status', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'I am not a protected veteran', 'I identify as one or more of the classifications of a protected veteran', 'I am a disabled veteran', 'Decline to self-identify'] },
+  { question: 'Disability status', answer: '', category: 'demographics', type: 'dropdown', options: ['', 'Yes, I have a disability (or previously had a disability)', 'No, I do not have a disability', 'I do not want to answer'] },
 
   // ── General ──
   { question: 'Highest level of education completed', answer: '', category: 'general', type: 'dropdown', options: ['', 'Less than High School', 'High School Diploma / GED', 'Some College (no degree)', "Associate's Degree", "Bachelor's Degree (BA/BS)", "Master's Degree (MA/MS/MBA)", 'Doctorate (PhD/EdD)', 'Professional Degree (JD/MD/DDS)', 'Prefer not to say'] },
@@ -720,6 +720,32 @@ async function saveSettings() {
   await sendMessage({ type: 'SAVE_SETTINGS', settings });
 }
 
+// ─── Q&A migration: upgrade stored entries to match current DEFAULT_QA_QUESTIONS ──
+
+function migrateQAList(stored) {
+  // Build a lookup of defaults by question text
+  const defaultsByQuestion = {};
+  DEFAULT_QA_QUESTIONS.forEach(d => { defaultsByQuestion[d.question] = d; });
+
+  let changed = false;
+  const migrated = stored.map(item => {
+    const def = defaultsByQuestion[item.question];
+    if (!def) return item;
+    // If the stored entry has wrong type or missing options, copy from default
+    if (item.type !== def.type || (def.type === 'dropdown' && !item.options)) {
+      changed = true;
+      return { ...item, type: def.type, options: def.options };
+    }
+    return item;
+  });
+
+  // Persist the migrated list if anything changed
+  if (changed) {
+    sendMessage({ type: 'SAVE_QA_LIST', qaList: migrated }).catch(() => {});
+  }
+  return migrated;
+}
+
 // ─── Load saved data on init ────────────────────────────────────────
 
 async function init() {
@@ -746,7 +772,7 @@ async function init() {
     }
 
     if (qa && qa.length) {
-      qaList = qa;
+      qaList = migrateQAList(qa);
       renderQA();
     }
 
@@ -764,7 +790,6 @@ async function init() {
     // Load profile slot state
     await loadProfileSlots();
   } catch (err) {
-    console.error('Init error:', err);
   }
 }
 
@@ -787,7 +812,6 @@ async function loadAppliedJobs() {
     const jobs = await sendMessage({ type: 'GET_APPLIED_JOBS' });
     renderAppliedJobs(jobs || []);
   } catch (err) {
-    console.error('Error loading applied jobs:', err);
   }
 }
 
