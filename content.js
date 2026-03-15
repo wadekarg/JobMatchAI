@@ -1,5 +1,5 @@
 // content.js — Side panel UI + JD extraction + autofill
-// Injected into every page by manifest.json content_scripts
+// Injected into job site pages by manifest.json content_scripts
 
 (function() {
   'use strict';
@@ -14,7 +14,26 @@
   let currentAnalysis = null;
   let panelRoot = null;
   let shadowRoot = null;
-  const analysisCache = {}; // keyed by URL
+  // ─── Persistent analysis cache (chrome.storage.local) ──────────
+  const CACHE_STORAGE_KEY = 'jm_analysisCache';
+  const MAX_CACHE_ENTRIES = 50;
+
+  async function getCachedAnalysis(url) {
+    const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
+    const cache = result[CACHE_STORAGE_KEY] || {};
+    return cache[url] || null;
+  }
+
+  async function setCachedAnalysis(url, data) {
+    const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
+    const cache = result[CACHE_STORAGE_KEY] || {};
+    cache[url] = data;
+    const keys = Object.keys(cache);
+    if (keys.length > MAX_CACHE_ENTRIES) {
+      keys.slice(0, keys.length - MAX_CACHE_ENTRIES).forEach(k => delete cache[k]);
+    }
+    await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: cache });
+  }
 
   // ─── Shadow DOM panel creation ──────────────────────────────────
 
@@ -686,8 +705,8 @@
     const pageUrl = window.location.href;
 
     // Check cache first (unless force re-analyze)
-    if (!forceRefresh && analysisCache[pageUrl]) {
-      const cached = analysisCache[pageUrl];
+    const cached = await getCachedAnalysis(pageUrl);
+    if (!forceRefresh && cached) {
       currentAnalysis = cached.analysis;
       showJobMeta(cached.title, cached.company, cached.location, cached.salary);
       renderAnalysis(cached.response);
@@ -700,6 +719,7 @@
 
     btn.disabled = true;
     btn.innerHTML = '<span class="jm-spinner"></span> Analyzing...';
+    let analysisSucceeded = false;
 
     try {
       const jd = extractJobDescription();
@@ -724,8 +744,8 @@
       });
 
       currentAnalysis = { ...response, title, company, location, salary, url: pageUrl };
-      // Cache the result
-      analysisCache[pageUrl] = { response, analysis: currentAnalysis, title, company, location, salary };
+      await setCachedAnalysis(pageUrl, { response, analysis: currentAnalysis, title, company, location, salary });
+      analysisSucceeded = true;
       renderAnalysis(response);
       clearStatus();
 
@@ -739,7 +759,7 @@
       setStatus('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = analysisCache[pageUrl] ? 'Re-Analyze' : 'Analyze Job';
+      btn.textContent = analysisSucceeded ? 'Re-Analyze' : 'Analyze Job';
     }
   }
 

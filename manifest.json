@@ -35,7 +35,21 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "*://*.linkedin.com/*",
+        "*://*.indeed.com/*",
+        "*://*.glassdoor.com/*",
+        "*://*.greenhouse.io/*",
+        "*://*.lever.co/*",
+        "*://*.myworkdayjobs.com/*",
+        "*://*.ziprecruiter.com/*",
+        "*://*.monster.com/*",
+        "*://*.dice.com/*",
+        "*://*.builtin.com/*",
+        "*://*.wellfound.com/*",
+        "*://*.ashbyhq.com/*",
+        "*://*.smartrecruiters.com/*"
+      ],
       "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
@@ -48,7 +62,21 @@
         "libs/pdf.worker.min.js",
         "libs/mammoth.browser.min.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "*://*.linkedin.com/*",
+        "*://*.indeed.com/*",
+        "*://*.glassdoor.com/*",
+        "*://*.greenhouse.io/*",
+        "*://*.lever.co/*",
+        "*://*.myworkdayjobs.com/*",
+        "*://*.ziprecruiter.com/*",
+        "*://*.monster.com/*",
+        "*://*.dice.com/*",
+        "*://*.builtin.com/*",
+        "*://*.wellfound.com/*",
+        "*://*.ashbyhq.com/*",
+        "*://*.smartrecruiters.com/*"
+      ]
     }
   ],
   "icons": {
