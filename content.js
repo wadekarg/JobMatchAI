@@ -59,6 +59,11 @@
   let _chipScrollHandler = null;      // scroll listener reference (for cleanup)
   let _chipResizeObs     = null;      // ResizeObserver reference (for cleanup)
 
+  // Autofill badges — fixed-position pills that don't affect page layout
+  let _badges            = [];        // [{ badgeEl, fieldEl, place }] for repositioning + cleanup
+  let _badgeScrollHandler = null;     // scroll listener for badge repositioning
+  let _badgeResizeObs    = null;      // ResizeObserver for badge repositioning
+
   // Resume slot switcher state — mirrors chrome.storage.local slot data
   let _activeSlot = 0;                                  // Currently selected slot index (0-2)
   let _slotNames  = ['Resume 1', 'Resume 2', 'Resume 3']; // Display names for each slot
@@ -1811,20 +1816,27 @@
         outline-offset: 2px !important;
       }
       .jmai-badge {
+        position: fixed;
+        z-index: 2147483639;
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        margin-top: 4px;
+        gap: 3px;
+        padding: 2px 7px 2px 5px;
+        background: #ecfdf5;
+        border: 1px solid #10b981;
+        border-radius: 20px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 11px;
-        color: #e53e3e;
-        opacity: 0.85;
+        font-size: 10px;
+        font-weight: 500;
+        color: #065f46;
         pointer-events: none;
         user-select: none;
+        white-space: nowrap;
+        box-shadow: 0 1px 4px rgba(16,185,129,0.15);
       }
       .jmai-badge svg {
-        width: 11px;
-        height: 11px;
+        width: 10px;
+        height: 10px;
         flex-shrink: 0;
       }
     `;
@@ -1832,22 +1844,51 @@
   }
 
   /**
-   * Inserts a small "✦ Autofilled by JobMatch AI" badge below a filled field.
-   * Skips if a badge already exists next to this element.
+   * Shows a small fixed-position "✦ Autofilled by JobMatch AI" pill anchored to
+   * the bottom-right corner of the filled field. Uses position:fixed so it never
+   * pushes other elements down or disrupts the page layout.
    * @param {Element} el - The filled form element (input, select, radio, etc.).
    */
   function showAutofillBadge(el) {
-    if (!el || !el.parentNode) return;
+    if (!el) return;
     injectChipStyles();
-    // Avoid duplicate badges
-    if (el.parentNode.querySelector('.jmai-badge')) return;
+
     const badge = document.createElement('div');
     badge.className = 'jmai-badge';
-    badge.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 1l1.5 4.5H14l-3.75 2.75L11.5 13 8 10.25 4.5 13l1.25-4.75L2 5.5h4.5L8 1z" fill="#e53e3e"/>
+    badge.innerHTML = `<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 1l1 3h3l-2.5 1.8.95 3L6 7.2 3.55 8.8l.95-3L2 4h3L6 1z" fill="#10b981"/>
     </svg>Autofilled by JobMatch AI`;
-    // Insert directly after the field element itself (below the answer, not the label)
-    el.parentNode.insertBefore(badge, el.nextSibling);
+    document.body.appendChild(badge);
+
+    // Position badge at the bottom-right corner of the field
+    function place() {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return; // element not visible
+      badge.style.top  = (r.bottom - 1) + 'px';
+      badge.style.left = Math.max(0, r.right - badge.offsetWidth) + 'px';
+    }
+    place();
+
+    _badges.push({ badgeEl: badge, fieldEl: el, place });
+
+    // Reposition on scroll/resize using shared listeners (set up once)
+    if (_badges.length === 1) {
+      _badgeScrollHandler = () => _badges.forEach(b => b.place());
+      window.addEventListener('scroll', _badgeScrollHandler, { passive: true, capture: true });
+      _badgeResizeObs = new ResizeObserver(() => _badges.forEach(b => b.place()));
+      _badgeResizeObs.observe(document.body);
+    }
+  }
+
+  /** Removes all autofill badges and their scroll/resize listeners. */
+  function clearAutofillBadges() {
+    _badges.forEach(({ badgeEl }) => badgeEl.remove());
+    _badges = [];
+    if (_badgeScrollHandler) {
+      window.removeEventListener('scroll', _badgeScrollHandler, { capture: true });
+      _badgeScrollHandler = null;
+    }
+    if (_badgeResizeObs) { _badgeResizeObs.disconnect(); _badgeResizeObs = null; }
   }
 
   /**
@@ -3109,7 +3150,8 @@
     _lastUrl = currentUrl;
     currentAnalysis = null;
     _pendingAnswers = null;
-    clearAllChips(); // Remove any floating chips from the previous job page
+    clearAllChips();        // Remove any floating chips from the previous job page
+    clearAutofillBadges();  // Remove autofill badges from the previous job page
     if (shadowRoot && panelOpen) {
       const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
       if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
