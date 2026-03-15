@@ -1,33 +1,90 @@
-// content.js — Side panel UI + JD extraction + autofill
+/**
+ * @file content.js
+ * @description Main content script for JobMatch AI.
+ *
+ * ROLE IN EXTENSION ARCHITECTURE
+ * --------------------------------
+ * This file is injected into supported job-site pages (LinkedIn, Indeed,
+ * Glassdoor, Greenhouse, Lever, Workday, etc.) by the manifest content_scripts
+ * declaration.  It runs in the page's context (but is isolated from page JS)
+ * and is responsible for ALL user-facing UI and interaction logic.
+ *
+ * Everything runs inside a single IIFE to avoid polluting the global namespace.
+ * The panel and its toggle button each live inside their own Shadow DOM host so
+ * the page's CSS can never bleed in and the extension's CSS can never bleed out.
+ *
+ * KEY RESPONSIBILITIES
+ * ---------------------
+ * 1. Shadow DOM side panel — renders the full analysis UI (score, skills, recs,
+ *    insights, ATS keywords, cover letter, bullet rewriter, notes).
+ * 2. Draggable floating ★ button — always-visible trigger that opens/closes panel.
+ * 3. Job data extraction — scrapes title, company, location, salary, and the
+ *    full job description from the host page using site-specific CSS selectors.
+ * 4. Job analysis — sends extracted data to background.js for AI scoring and
+ *    caches results in chrome.storage.local to avoid redundant API calls.
+ * 5. AutoFill pipeline — detects form fields (text, select, radio, checkbox,
+ *    custom dropdowns), sends them to the AI for answer generation, shows a
+ *    preview for user review, then fills the form on confirmation.
+ * 6. Cover letter & bullet rewriter — post-analysis AI writing tools.
+ * 7. Job notes — per-URL free-text notes saved to chrome.storage.local.
+ * 8. SPA navigation detection — resets state when LinkedIn/Indeed navigate to a
+ *    new job posting without a full page reload.
+ */
+
 // Injected into job site pages by manifest.json content_scripts
 
 (function() {
   'use strict';
 
-  // Prevent double injection
+  // Prevent double injection (e.g. if the content script fires twice on the same page)
   if (window.__jobmatchAILoaded) return;
   window.__jobmatchAILoaded = true;
 
   // ─── State ──────────────────────────────────────────────────────
+  // Module-level variables shared across functions within this IIFE.
 
-  let panelOpen = false;
-  let currentAnalysis = null;
-  let panelRoot = null;
-  let shadowRoot = null;
+  let panelOpen = false;        // Whether the side panel is currently visible
+  let currentAnalysis = null;   // The most recent analysis result for the current page
+  let panelRoot = null;         // The host DOM element that contains the Shadow DOM panel
+  let shadowRoot = null;        // The closed Shadow DOM root — panel elements are queried from here
+
+  // Pending autofill state — set during the preview step, cleared on apply/cancel
+  let _pendingAnswers   = null; // AI-generated field answers waiting for user confirmation
+  let _pendingQuestions = null; // Detected form field descriptors matching _pendingAnswers
+  let _fieldMap         = {};   // Map of question_id → { el, type, ... } built during field detection
+
   // ─── Persistent analysis cache (chrome.storage.local) ──────────
-  const CACHE_STORAGE_KEY = 'jm_analysisCache';
-  const MAX_CACHE_ENTRIES = 50;
+  // Caching analysis results prevents redundant API calls when the user
+  // closes and reopens the panel or navigates back to a job they already viewed.
+  // Results are stored under a single 'jm_analysisCache' key as a URL→data map.
 
+  const CACHE_STORAGE_KEY = 'jm_analysisCache'; // Key used in chrome.storage.local
+  const MAX_CACHE_ENTRIES = 50;                  // LRU eviction kicks in beyond this limit
+
+  /**
+   * Retrieves a cached analysis result for the given page URL.
+   * @async
+   * @param {string} url - The full URL of the job posting page.
+   * @returns {Promise<Object|null>} Cached result or null if not found.
+   */
   async function getCachedAnalysis(url) {
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
     return cache[url] || null;
   }
 
+  /**
+   * Stores an analysis result for the given URL, evicting the oldest entries
+   * when the cache exceeds MAX_CACHE_ENTRIES.
+   * @async
+   * @param {string} url  - The full URL of the job posting page.
+   * @param {Object} data - The analysis payload to cache.
+   */
   async function setCachedAnalysis(url, data) {
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
     cache[url] = data;
+    // Evict oldest entries (Object.keys preserves insertion order in V8)
     const keys = Object.keys(cache);
     if (keys.length > MAX_CACHE_ENTRIES) {
       keys.slice(0, keys.length - MAX_CACHE_ENTRIES).forEach(k => delete cache[k]);
@@ -36,7 +93,15 @@
   }
 
   // ─── Shadow DOM panel creation ──────────────────────────────────
+  // The panel lives entirely inside a closed Shadow DOM so that:
+  //   • The host page's CSS cannot override the panel's styles.
+  //   • The panel's CSS cannot leak out and break the host page.
+  //   • The panel's DOM is inaccessible to page scripts (mode: 'closed').
 
+  /**
+   * Creates the side panel Shadow DOM, injects styles and HTML, and wires events.
+   * Called once on first use (lazy init — not on script inject).
+   */
   function createPanel() {
     const host = document.createElement('div');
     host.id = 'jobmatch-ai-panel-host';
@@ -60,6 +125,12 @@
     return host;
   }
 
+  /**
+   * Returns the full CSS string for the side panel Shadow DOM.
+   * All selectors are scoped inside the shadow root so they cannot
+   * affect or be affected by the host page's stylesheet.
+   * @returns {string} CSS text to inject into a <style> element.
+   */
   function getPanelCSS() {
     return `
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -542,6 +613,12 @@
     `;
   }
 
+  /**
+   * Returns the static inner HTML string for the side panel.
+   * Sections that are initially hidden (display:none) are shown
+   * programmatically after analysis / autofill completes.
+   * @returns {string} HTML markup for the panel body.
+   */
   function getPanelHTML() {
     return `
       <div class="jm-header">
@@ -646,6 +723,11 @@
     `;
   }
 
+  /**
+   * Attaches all button click listeners and tab-switch handlers to the panel.
+   * Called once after the panel HTML is injected into the Shadow DOM.
+   * @param {HTMLElement} panel - The #jm-panel element inside the Shadow DOM.
+   */
   function wireEvents(panel) {
     panel.querySelector('#jmClose').addEventListener('click', togglePanel);
     panel.querySelector('#jmAnalyze').addEventListener('click', () => {
@@ -684,7 +766,18 @@
   }
 
   // ─── Toggle button (always visible) ────────────────────────────
+  // The ★ button is a separate Shadow DOM host from the panel so it can float
+  // freely without interfering with the panel's stacking context.
+  // It supports both mouse drag and touch drag, and persists its last position
+  // across page navigations using localStorage.
 
+  /**
+   * Creates the draggable floating ★ toggle button and appends it to the page.
+   *
+   * Position is restored from localStorage on creation. Drag state is tracked
+   * with mousedown/mousemove/mouseup (and touch equivalents). A click only fires
+   * togglePanel() if the button was not meaningfully dragged (delta < 4px).
+   */
   function createToggleButton() {
     const btn = document.createElement('button');
     btn.className = 'jm-toggle';
@@ -777,6 +870,12 @@
 
   // ─── Panel toggle ─────────────────────────────────────────────
 
+  /**
+   * Opens or closes the side panel.
+   * On first open, createPanel() is called to build the Shadow DOM.
+   * When opening, also triggers checkIfApplied() and loadJobNotes()
+   * so the panel always reflects the latest state for the current URL.
+   */
   function togglePanel() {
     panelOpen = !panelOpen;
     if (!panelRoot) createPanel();
@@ -798,18 +897,30 @@
 
   // ─── Status helpers ───────────────────────────────────────────
 
+  /**
+   * Displays a status message inside the panel (info / success / error styles).
+   * @param {string} text - Message to display.
+   * @param {'info'|'success'|'error'} type - CSS modifier class for color.
+   */
   function setStatus(text, type) {
     const el = shadowRoot.getElementById('jmStatus');
     el.textContent = text;
     el.className = 'jm-status ' + type;
   }
 
+  /** Hides the status bar (used after a timed delay post-success). */
   function clearStatus() {
     const el = shadowRoot.getElementById('jmStatus');
     el.className = 'jm-status';
     el.style.display = 'none';
   }
 
+  /**
+   * Scrolls the panel's scrollable body to bring a section into view.
+   * Uses the panel's own scrollable container rather than window.scrollIntoView,
+   * which would scroll the host page instead of the Shadow DOM panel.
+   * @param {HTMLElement} el - The element to scroll to inside the panel.
+   */
   function scrollPanelTo(el) {
     const body = shadowRoot.querySelector('.jm-body');
     if (!body) return;
@@ -817,7 +928,15 @@
   }
 
   // ─── Job description extraction ───────────────────────────────
+  // Each function tries a prioritised list of CSS selectors for supported job
+  // sites, then falls back to heuristic DOM scanning.  Returns an empty string
+  // (or null) when nothing can be found, so callers can show an error.
 
+  /**
+   * Extracts the full job description text from the current page.
+   * Tries site-specific selectors first, then generic heuristics.
+   * @returns {string} The extracted job description text, or '' if not found.
+   */
   function extractJobDescription() {
     // ATS-specific selectors
     const selectors = [
@@ -874,6 +993,7 @@
     return document.body.innerText.substring(0, 10000);
   }
 
+  /** @returns {string} The job title extracted from the page, or ''. */
   function extractJobTitle() {
     const selectors = [
       'h1.job-title', 'h1.posting-headline', '.job-title h1',
@@ -890,6 +1010,7 @@
     return document.title.split('|')[0].split('-')[0].trim();
   }
 
+  /** @returns {string} The company name extracted from the page, or ''. */
   function extractCompany() {
     const selectors = [
       '.company-name', '[class*="company"]', '.posting-categories .location',
@@ -905,6 +1026,7 @@
     return '';
   }
 
+  /** @returns {string} The job location extracted from the page, or ''. */
   function extractLocation() {
     const selectors = [
       // LinkedIn
@@ -937,6 +1059,7 @@
     return '';
   }
 
+  /** @returns {string} The salary/compensation text extracted from the page, or ''. */
   function extractSalary() {
     // Site-specific selectors
     const selectors = [
@@ -983,6 +1106,17 @@
 
   // ─── Analyze job ──────────────────────────────────────────────
 
+  /**
+   * Runs a job analysis for the current page: extracts the JD, sends it to the
+   * AI via background.js, caches the result, and renders it in the panel.
+   *
+   * If a cached result exists for the current URL and forceRefresh is false,
+   * the cached result is displayed immediately with no API call.
+   *
+   * @async
+   * @param {boolean} [forceRefresh=false] - When true, bypasses the cache and
+   *   always makes a fresh AI call (triggered by the "Re-Analyze" button).
+   */
   async function analyzeJob(forceRefresh) {
     const btn = shadowRoot.getElementById('jmAnalyze');
     const pageUrl = window.location.href;
@@ -1056,6 +1190,14 @@
     }
   }
 
+  /**
+   * Renders the job title, company, location, and salary in the panel header.
+   * Elements with no data are hidden to avoid empty UI gaps.
+   * @param {string} title    - Job title text.
+   * @param {string} company  - Company name.
+   * @param {string} location - Job location string.
+   * @param {string} salary   - Salary/compensation string.
+   */
   function showJobMeta(title, company, location, salary) {
     const jobInfo = shadowRoot.getElementById('jmJobInfo');
     shadowRoot.getElementById('jmJobTitle').textContent = title;
@@ -1071,6 +1213,12 @@
     }
   }
 
+  /**
+   * Populates all analysis sections in the panel (score, matching skills,
+   * missing skills, recommendations, insights, ATS keywords).
+   * Each section is shown only if the AI returned data for it.
+   * @param {Object} data - The analysis object returned by background.js handleAnalyzeJob.
+   */
   function renderAnalysis(data) {
     // Score
     const scoreSection = shadowRoot.getElementById('jmScoreSection');
@@ -1136,6 +1284,11 @@
     }
   }
 
+  /**
+   * Maps a 0–100 match score to a CSS class for color-coding the score circle.
+   * @param {number} score - The match score.
+   * @returns {'score-green'|'score-amber'|'score-red'}
+   */
   function getScoreClass(score) {
     if (score >= 70) return 'score-green';
     if (score >= 45) return 'score-amber';
@@ -1144,6 +1297,11 @@
 
   // ─── Save job ─────────────────────────────────────────────────
 
+  /**
+   * Saves the current job to the user's saved-jobs list via background.js.
+   * Requires a completed analysis (currentAnalysis must be non-null).
+   * @async
+   */
   async function saveJob() {
     if (!currentAnalysis) return;
     try {
@@ -1168,6 +1326,12 @@
 
   // ─── Mark as Applied ─────────────────────────────────────────
 
+  /**
+   * Records the current job as applied in the user's applied-jobs list.
+   * Deduplication is handled by background.js (URL-based).
+   * Updates the button text to "Applied ✓" on success.
+   * @async
+   */
   async function markApplied() {
     if (!currentAnalysis) return;
     const btn = shadowRoot.getElementById('jmMarkApplied');
@@ -1207,12 +1371,17 @@
   }
 
   // ─── AutoFill ─────────────────────────────────────────────────
+  // The autofill pipeline has three phases:
+  //   1. Detect  — detectFormFields() scans the page and builds _fieldMap.
+  //   2. Preview — showAutofillPreview() shows the AI's suggestions for review.
+  //   3. Apply   — applyAutofill() calls fillFormFromAnswers() to fill the form.
+  // The user can cancel after the preview step without any fields being touched.
 
-  // Module-level map: question_id → { element(s), actualType }
-  let _fieldMap = {};
-  let _pendingAnswers = null;
-  let _pendingQuestions = [];
-
+  /**
+   * Initiates the autofill pipeline: detects fields, asks AI for answers,
+   * then shows a preview panel for the user to review before applying.
+   * @async
+   */
   async function autofillForm() {
     const btn = shadowRoot.getElementById('jmAutofill');
     btn.disabled = true;
@@ -1256,6 +1425,13 @@
     }
   }
 
+  /**
+   * Renders the autofill preview panel, showing each detected field alongside
+   * the AI's proposed answer.  Fields flagged as NEEDS_USER_INPUT are highlighted.
+   * Stores answers and questions in _pendingAnswers/_pendingQuestions for applyAutofill.
+   * @param {Array<Object>} answers   - AI answer objects from GENERATE_AUTOFILL.
+   * @param {Array<Object>} questions - Detected form field descriptors.
+   */
   function showAutofillPreview(answers, questions) {
     const previewSection = shadowRoot.getElementById('jmAutofillPreview');
     const list = shadowRoot.getElementById('jmPreviewList');
@@ -1305,6 +1481,12 @@
     scrollPanelTo(previewSection);
   }
 
+  /**
+   * Applies the pending autofill answers to the form (phase 3 of the pipeline).
+   * Called when the user clicks "Apply Selected" in the preview panel.
+   * Shows a summary toast indicating how many fields were filled vs skipped.
+   * @async
+   */
   async function applyAutofill() {
     if (!_pendingAnswers) return;
     const applyBtn = shadowRoot.getElementById('jmApplyFill');
@@ -1340,6 +1522,7 @@
     }
   }
 
+  /** Dismisses the autofill preview panel and clears pending state. */
   function cancelAutofill() {
     shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
     _pendingAnswers = null;
@@ -1348,7 +1531,18 @@
   }
 
   // ─── Form field detection ─────────────────────────────────────
+  // Scans the live DOM for all fillable form fields and builds two data structures:
+  //   questions[] — serialisable descriptors sent to the AI (label, type, options)
+  //   _fieldMap   — maps each question_id to the actual DOM element(s) for filling
+  //
+  // Supported field types: text/email/tel/number inputs, textareas, native <select>,
+  // custom dropdown triggers (aria-combobox, aria-haspopup), radio groups, checkboxes.
 
+  /**
+   * Detects all fillable form fields on the current page.
+   * Populates the module-level _fieldMap and returns a serialisable questions array.
+   * @returns {Array<Object>} Array of field descriptors to send to the AI.
+   */
   function detectFormFields() {
     const questions = [];
     let qIndex = 0;
@@ -1554,6 +1748,12 @@
     return questions;
   }
 
+  /**
+   * Extracts the visible label text for a radio button.
+   * Clones the parent label and strips the input element to get only text.
+   * @param {HTMLInputElement} input - A radio input element.
+   * @returns {string} The label text, or '' if not determinable.
+   */
   function getRadioLabel(input) {
     const parentLabel = input.closest('label');
     if (parentLabel) {
@@ -1574,6 +1774,13 @@
     return '';
   }
 
+  /**
+   * Resolves a human-readable label for a form input using multiple strategies:
+   * 1. <label for="id"> association, 2. wrapping <label>, 3. aria-label/aria-labelledby,
+   * 4. placeholder, 5. nearby sibling/parent text.
+   * @param {HTMLElement} input - Any form element.
+   * @returns {string} The best label text found, or ''.
+   */
   function getFieldLabel(input) {
     // 1. <label for="id">
     if (input.id) {
@@ -1611,6 +1818,20 @@
 
   // ─── Form filling (uses _fieldMap from detection) ────────────
 
+  /**
+   * Fills form fields using AI-generated answers and the _fieldMap built by detectFormFields.
+   * Routes each answer to the correct fill strategy based on the field type:
+   *   - 'dropdown'        → fillSelectByText (native <select>)
+   *   - 'custom_dropdown' → fillCustomDropdown (ARIA combobox, opens a listbox)
+   *   - 'radio'           → fillRadioFromRef
+   *   - 'checkbox'        → fillCheckboxFromRef
+   *   - default           → fillInput (text/textarea/email/etc.)
+   *
+   * Falls back to fillFormLegacy() if answers is a plain object (old AI response format).
+   * @async
+   * @param {Array<Object>|Object} answers - AI answer array or legacy flat object.
+   * @returns {Promise<{filled: number, skipped: string[]}>}
+   */
   async function fillFormFromAnswers(answers) {
     // Handle array format (new) or flat object (legacy)
     if (!Array.isArray(answers)) {
@@ -1684,6 +1905,13 @@
     return { filled, skipped };
   }
 
+  /**
+   * Legacy fill path for old-format AI responses (flat key→value object).
+   * Used as a fallback when the AI returns a map instead of an array.
+   * @async
+   * @param {Object} mapping - Map of field identifiers to answer strings.
+   * @returns {Promise<{filled: number, skipped: []}>}
+   */
   async function fillFormLegacy(mapping) {
     let filled = 0;
     for (const [key, value] of Object.entries(mapping)) {
@@ -1703,6 +1931,19 @@
   }
 
   // ── Custom dropdown: open → read options → ask AI → click chosen option ──
+  // Custom dropdowns (used by Workday, Greenhouse, Lever, etc.) are not native
+  // <select> elements — they are ARIA comboboxes that render a listbox on click.
+  // Strategy: programmatically open them, read the live option elements, ask AI
+  // to pick one, then click the matching element and wait for it to register.
+
+  /**
+   * Fills a custom ARIA dropdown by: opening it, reading its options,
+   * sending them to the AI, and clicking the AI's chosen option.
+   * @async
+   * @param {HTMLElement} input        - The combobox trigger element.
+   * @param {string}      questionText - The field's label, sent to the AI for context.
+   * @returns {Promise<boolean>} true if successfully filled, false otherwise.
+   */
   async function fillCustomDropdown(input, questionText) {
 
     // Step 1: Click to open the dropdown
@@ -1777,6 +2018,13 @@
     return false;
   }
 
+  /**
+   * Finds all visible option elements for an open custom dropdown.
+   * Checks the aria-controls listbox, nearby parent containers, and
+   * any floating listbox/option elements currently in the DOM.
+   * @param {HTMLElement} triggerEl - The combobox trigger that was clicked to open the dropdown.
+   * @returns {Array<{text: string, el: HTMLElement}>} List of option text+element pairs.
+   */
   function findVisibleOptions(triggerEl) {
     const results = [];
     const seen = new Set();
@@ -1807,6 +2055,13 @@
     return results;
   }
 
+  /**
+   * Collects visible, non-placeholder option elements from a node list.
+   * Skips hidden elements (zero bounding rect) and placeholder text like "Select…".
+   * @param {NodeList|Array} nodeList - DOM elements to scan.
+   * @param {Array}          results  - Accumulator array of {text, el} objects.
+   * @param {Set}            seen     - Set of already-collected text values (dedup).
+   */
   function collectOptions(nodeList, results, seen) {
     for (const el of nodeList) {
       const rect = el.getBoundingClientRect();
@@ -1819,6 +2074,12 @@
     }
   }
 
+  /**
+   * Dispatches mousedown, mouseup, and click events on an element.
+   * Required for custom dropdowns that listen to low-level mouse events
+   * rather than just the 'click' event.
+   * @param {HTMLElement} el - The element to click.
+   */
   function clickElement(el) {
     el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
@@ -1826,9 +2087,21 @@
     el.click();
   }
 
+  /** Returns a Promise that resolves after `ms` milliseconds. Used for async waits during form fill. */
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
   // ── Select: match AI's option text → actual option value, then select it ──
+
+  /**
+   * Selects the best matching option in a native <select> element.
+   * Tries six strategies in order: exact map lookup, exact value match,
+   * exact text match, normalised match (strip punctuation), partial/contains match,
+   * and finally a word-overlap fuzzy score.
+   * @param {HTMLSelectElement} select      - The native select element to fill.
+   * @param {string}            aiText      - The option text chosen by the AI.
+   * @param {Object}            optionMap   - Map of lowercase option text → option value.
+   * @param {string[]}          optionTexts - Array of option text strings (for fallback).
+   */
   function fillSelectByText(select, aiText, optionMap, optionTexts) {
     const text = String(aiText).trim();
     const textLower = text.toLowerCase();
@@ -1902,6 +2175,13 @@
   }
 
   // ── Radio: use stored refs directly ──
+
+  /**
+   * Selects a radio button from a group based on the AI's text answer.
+   * Tries exact label match, then normalised match, then partial match.
+   * @param {Array<{text: string, el: HTMLInputElement}>} radioRefs - Radio option refs.
+   * @param {string} selectedText - The option text chosen by the AI.
+   */
   function fillRadioFromRef(radioRefs, selectedText) {
     const target = selectedText.toLowerCase().trim();
 
@@ -1928,6 +2208,13 @@
   }
 
   // ── Checkbox: use stored ref directly ──
+
+  /**
+   * Checks or unchecks a checkbox based on the AI's answer value.
+   * Treats 'yes', 'true', '1', 'agree', 'accept' as truthy.
+   * @param {HTMLInputElement} cb    - The checkbox element.
+   * @param {string}           value - The AI's answer string.
+   */
   function fillCheckboxFromRef(cb, value) {
     const shouldCheck = /^(yes|true|1|checked|agree|accept)$/i.test(String(value).trim());
     if (cb.checked !== shouldCheck) {
@@ -1937,12 +2224,29 @@
   }
 
   // ── Shared event dispatcher ──
+
+  /**
+   * Fires input, change, and blur events on an element.
+   * Required to notify React/Vue/Angular frameworks that the value was
+   * changed programmatically — without these events, the framework's
+   * internal state won't update and the value may be ignored on submit.
+   * @param {HTMLElement} el - The form element that was just filled.
+   */
   function fireEvents(el) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
+  /**
+   * Sets a text input or textarea value in a React-compatible way.
+   * React overrides the native value setter — if you set input.value directly,
+   * React won't detect the change and the field will appear unchanged on submit.
+   * Using Object.getOwnPropertyDescriptor to access the native setter bypasses
+   * React's override and triggers its synthetic event system correctly.
+   * @param {HTMLInputElement|HTMLTextAreaElement} input - The input to fill.
+   * @param {string} value - The value to set.
+   */
   function fillInput(input, value) {
     // React-compatible value setter
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
@@ -1971,6 +2275,12 @@
 
   // ─── Cover letter ─────────────────────────────────────────────
 
+  /**
+   * Generates a tailored cover letter for the current job via the AI and
+   * displays it in the Cover Letter section of the panel.
+   * Requires a completed analysis (currentAnalysis must be non-null).
+   * @async
+   */
   async function generateCoverLetter() {
     const btn = shadowRoot.getElementById('jmCoverLetterBtn');
     btn.disabled = true;
@@ -2000,6 +2310,13 @@
 
   // ─── Bullet rewriter ──────────────────────────────────────────
 
+  /**
+   * Requests AI-rewritten resume bullets targeted at the current job's missing skills.
+   * Shows the Improved Resume Bullets section immediately (before AI responds) so the
+   * user can see a loading state, then populates it with before/after pairs.
+   * Each bullet has a Copy button to copy the improved version to clipboard.
+   * @async
+   */
   async function rewriteBullets() {
     const btn = shadowRoot.getElementById('jmRewriteBulletsBtn');
     btn.disabled = true;
@@ -2048,9 +2365,15 @@
   }
 
   // ─── Job notes ────────────────────────────────────────────────
+  // Per-URL free-text notes stored in chrome.storage.local under 'jm_jobNotes'.
+  // Notes are loaded when the panel opens and auto-saved on input/blur.
 
-  const NOTES_STORAGE_KEY = 'jm_jobNotes';
+  const NOTES_STORAGE_KEY = 'jm_jobNotes'; // Key for the notes map in chrome.storage.local
 
+  /**
+   * Loads saved notes for the current page URL and populates the notes textarea.
+   * @async
+   */
   async function loadJobNotes() {
     try {
       const url = window.location.href;
@@ -2061,6 +2384,12 @@
     } catch (e) { /* ignore */ }
   }
 
+  /**
+   * Saves the current notes textarea value for the current page URL.
+   * Called on textarea blur and input events (auto-save).
+   * Caps the notes map at 200 entries by evicting the oldest.
+   * @async
+   */
   async function saveJobNotes() {
     try {
       const url = window.location.href;
@@ -2083,6 +2412,15 @@
 
   // ─── Message handling ─────────────────────────────────────────
 
+  /**
+   * Sends a message to the background service worker and returns a Promise.
+   * Wraps chrome.runtime.sendMessage to:
+   *  - Check chrome.runtime.id before sending (detects invalidated extension context)
+   *  - Translate the { success, data/error } envelope into resolve/reject
+   *  - Provide a user-friendly error when the extension has been updated mid-session
+   * @param {Object} msg - The message object to send (must have a `type` field).
+   * @returns {Promise<*>} Resolves with resp.data on success, rejects with Error on failure.
+   */
   function sendMessage(msg) {
     return new Promise((resolve, reject) => {
       try {
@@ -2129,6 +2467,13 @@
 
   // ─── Utility ──────────────────────────────────────────────────
 
+  /**
+   * Escapes a string for safe insertion into HTML via innerHTML.
+   * Uses the browser's own text node serialisation so all special characters
+   * (&, <, >, ", ') are correctly escaped without a manual replacement table.
+   * @param {string} str - The raw string to escape.
+   * @returns {string} HTML-safe string.
+   */
   function escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -2136,12 +2481,19 @@
   }
 
   // ─── Initialize ───────────────────────────────────────────────
+  // Build the panel and toggle button immediately on script inject.
+  // The panel starts hidden (no .open class); it is shown on first togglePanel() call.
 
   createPanel();
   createToggleButton();
 
   // ─── SPA URL change detection (LinkedIn, Indeed, etc.) ────────
-  let _lastUrl = window.location.href;
+  // LinkedIn and Indeed navigate between job listings without a full page reload.
+  // A MutationObserver on document.body catches the DOM mutations that accompany
+  // these history.pushState navigations, allowing us to reset the panel state
+  // and inform the user that a new job has been detected.
+
+  let _lastUrl = window.location.href; // Track the last seen URL to detect changes
   new MutationObserver(() => {
     const currentUrl = window.location.href;
     if (currentUrl === _lastUrl) return;

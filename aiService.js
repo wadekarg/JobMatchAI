@@ -1,15 +1,87 @@
-// aiService.js — AI provider abstraction + prompt templates
-// Only imported by background.js service worker
+/**
+ * @file aiService.js
+ * @description AI provider abstraction layer for JobMatch AI.
+ *
+ * This module is the single point of contact for all AI API interactions within
+ * the extension. It supports 10+ providers:
+ *   - Anthropic (Claude)     — proprietary API style, custom auth headers
+ *   - OpenAI                 — OpenAI chat completions style (the de-facto standard)
+ *   - Google Gemini          — unique REST style; API key passed as a URL query param
+ *   - Groq                   — OpenAI-compatible endpoint, very fast inference
+ *   - Cerebras               — OpenAI-compatible endpoint, hardware-accelerated
+ *   - Together AI             — OpenAI-compatible endpoint, open-source model hosting
+ *   - OpenRouter             — OpenAI-compatible aggregator; requires extra referrer headers
+ *   - Mistral AI             — OpenAI-compatible endpoint
+ *   - DeepSeek               — OpenAI-compatible endpoint
+ *   - Cohere                 — proprietary v2 chat API style, array content blocks
+ *
+ * Key responsibilities:
+ *   1. Maintaining the canonical provider registry (PROVIDERS) with endpoints,
+ *      model lists, key placeholders, and API style tags.
+ *   2. Routing calls through the correct HTTP adapter based on `apiStyle`.
+ *   3. Retrying failed requests on rate-limit (HTTP 429) with exponential back-off.
+ *   4. Parsing AI responses that may contain raw JSON or markdown-fenced JSON blocks.
+ *   5. Providing typed prompt-builder functions for every use-case in the extension
+ *      (resume parsing, job analysis, autofill, cover letter, bullet rewrite, etc.).
+ *
+ * This file is only imported by background.js (the extension service worker). It
+ * uses ES module exports and must not be included in a regular <script> tag context.
+ */
 
+// ─── Global constants ────────────────────────────────────────────────
+
+/** Default model ID used when no provider-specific model is requested. */
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+
+/**
+ * Default sampling temperature applied to all providers unless overridden.
+ * 0.3 keeps responses focused and deterministic without being fully greedy.
+ */
 const DEFAULT_TEMPERATURE = 0.3;
+
+/** Maximum number of additional retry attempts after the initial call fails. */
 const MAX_RETRIES = 2;
+
+/**
+ * Base delay in milliseconds between retry attempts.
+ * The actual delay doubles with each attempt (exponential back-off):
+ *   attempt 1 → 1000 ms, attempt 2 → 2000 ms.
+ */
 const RETRY_DELAY_MS = 1000;
+
+/** Provider key used when no explicit provider is specified by the caller. */
 const DEFAULT_PROVIDER = 'anthropic';
 
 // ─── Provider Registry ──────────────────────────────────────────────
+//
+// Each entry in PROVIDERS describes a single AI provider. Fields:
+//   name          — Human-readable label shown in the extension UI.
+//   apiStyle      — Selects which HTTP adapter function to use:
+//                     'anthropic' → fetchAnthropic
+//                     'openai'    → fetchOpenAI  (also used by Groq, Cerebras,
+//                                   Together, OpenRouter, Mistral, DeepSeek)
+//                     'gemini'    → fetchGemini
+//                     'cohere'    → fetchCohere
+//   endpoint      — Base URL for the provider's chat API.
+//   keyPlaceholder — Prefix hint shown in the API key input field.
+//   hint          — User-facing tooltip explaining where to obtain the key.
+//   free          — Whether the provider offers a free tier (used to badge the UI).
+//   models        — Ordered list of { id, name } objects available for selection.
+//   defaultModel  — Model ID pre-selected when the user first picks this provider.
+//   extraHeaders  — (optional) Additional HTTP headers merged into every request.
+//                   Only defined for providers that require them (e.g. OpenRouter).
+//
+// ────────────────────────────────────────────────────────────────────
 
 const PROVIDERS = {
+
+  // ── Anthropic (Claude) ────────────────────────────────────────────
+  // Uses a proprietary request/response format (not OpenAI-compatible).
+  // Auth: custom 'x-api-key' header (not 'Authorization: Bearer').
+  // Requires 'anthropic-version' header to pin the API contract.
+  // Requires 'anthropic-dangerous-direct-browser-access' header because
+  // the Anthropic SDK normally blocks browser-side calls as a security
+  // measure; this header explicitly opts the caller in to direct access.
   anthropic: {
     name: 'Anthropic (Claude)',
     apiStyle: 'anthropic',
@@ -24,6 +96,12 @@ const PROVIDERS = {
     ],
     defaultModel: 'claude-sonnet-4-20250514',
   },
+
+  // ── OpenAI ────────────────────────────────────────────────────────
+  // The canonical OpenAI Chat Completions API. Many other providers
+  // mirror this schema, making it the de-facto industry standard.
+  // Auth: 'Authorization: Bearer <key>' header.
+  // Response path: choices[0].message.content
   openai: {
     name: 'OpenAI',
     apiStyle: 'openai',
@@ -41,6 +119,16 @@ const PROVIDERS = {
     ],
     defaultModel: 'gpt-4.1',
   },
+
+  // ── Google Gemini ─────────────────────────────────────────────────
+  // Uses Google's own GenerativeLanguage REST API — NOT OpenAI-compatible.
+  // Quirks:
+  //   - The API key is appended as a '?key=...' query parameter in the URL,
+  //     rather than being placed in an Authorization header.
+  //   - The model ID is embedded in the URL path, not in the request body.
+  //   - Message roles use 'user' / 'model' (not 'user' / 'assistant').
+  //   - Token limit field is 'maxOutputTokens' (not 'max_tokens').
+  //   - Response path: candidates[0].content.parts[0].text
   gemini: {
     name: 'Google (Gemini)',
     apiStyle: 'gemini',
@@ -56,6 +144,11 @@ const PROVIDERS = {
     ],
     defaultModel: 'gemini-2.5-flash',
   },
+
+  // ── Groq ──────────────────────────────────────────────────────────
+  // OpenAI-compatible endpoint backed by Groq's LPU hardware.
+  // Notably fast inference; hosts open-source models (Llama, Qwen).
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   groq: {
     name: 'Groq',
     apiStyle: 'openai',
@@ -72,6 +165,11 @@ const PROVIDERS = {
     ],
     defaultModel: 'llama-3.3-70b-versatile',
   },
+
+  // ── Cerebras ──────────────────────────────────────────────────────
+  // OpenAI-compatible endpoint running on Cerebras wafer-scale hardware.
+  // Optimised for throughput; hosts open-source models.
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   cerebras: {
     name: 'Cerebras',
     apiStyle: 'openai',
@@ -87,6 +185,11 @@ const PROVIDERS = {
     ],
     defaultModel: 'llama3.1-8b',
   },
+
+  // ── Together AI ───────────────────────────────────────────────────
+  // OpenAI-compatible endpoint for hosting and running open-source models.
+  // Provides free credits on signup for experimentation.
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   together: {
     name: 'Together AI',
     apiStyle: 'openai',
@@ -102,6 +205,15 @@ const PROVIDERS = {
     ],
     defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
   },
+
+  // ── OpenRouter ────────────────────────────────────────────────────
+  // OpenAI-compatible aggregator that proxies requests to many backends.
+  // Unique among providers here because it requires two extra headers:
+  //   'HTTP-Referer' — identifies the calling application for rate-limit
+  //                    attribution and their analytics dashboard.
+  //   'X-Title'      — human-readable app name shown in OpenRouter's UI.
+  // These are injected via the extraHeaders field and merged at call time.
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   openrouter: {
     name: 'OpenRouter',
     apiStyle: 'openai',
@@ -118,6 +230,11 @@ const PROVIDERS = {
     ],
     defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
   },
+
+  // ── Mistral AI ────────────────────────────────────────────────────
+  // OpenAI-compatible endpoint from Mistral. Includes reasoning models
+  // (Magistral series) alongside standard chat and code-specialised models.
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   mistral: {
     name: 'Mistral AI',
     apiStyle: 'openai',
@@ -134,6 +251,11 @@ const PROVIDERS = {
     ],
     defaultModel: 'mistral-large-latest',
   },
+
+  // ── DeepSeek ──────────────────────────────────────────────────────
+  // OpenAI-compatible endpoint from DeepSeek. Offers both a standard chat
+  // model (V3) and a chain-of-thought reasoning model (R1).
+  // Auth: 'Authorization: Bearer <key>' (same as OpenAI).
   deepseek: {
     name: 'DeepSeek',
     apiStyle: 'openai',
@@ -147,6 +269,15 @@ const PROVIDERS = {
     ],
     defaultModel: 'deepseek-chat',
   },
+
+  // ── Cohere ────────────────────────────────────────────────────────
+  // Uses Cohere's proprietary v2 Chat API — NOT OpenAI-compatible.
+  // Quirks:
+  //   - Response body structure differs: the text lives at
+  //     message.content, which is an array of content blocks
+  //     (each block has a 'text' property). The adapter joins them.
+  //   - Auth: 'Authorization: Bearer <key>' (same header name as OpenAI,
+  //     but the response shape is entirely different).
   cohere: {
     name: 'Cohere',
     apiStyle: 'cohere',
@@ -166,10 +297,31 @@ const PROVIDERS = {
 
 // ─── Main AI call router with retry ─────────────────────────────────
 
+/**
+ * Public entry point for all AI calls. Resolves the provider config, builds
+ * the final params object, and delegates to `dispatchCall` with automatic
+ * exponential back-off retry on HTTP 429 (rate limit) errors.
+ *
+ * @param {string} provider  - Key into PROVIDERS (e.g. 'anthropic', 'openai').
+ * @param {string} apiKey    - User-supplied API key for the chosen provider.
+ * @param {Array<{role: string, content: string}>} messages
+ *                           - Conversation messages in OpenAI role/content format.
+ *                             Adapters translate this to provider-specific formats
+ *                             where needed (e.g. Gemini uses 'model' instead of
+ *                             'assistant', and structures content as parts arrays).
+ * @param {Object} [options] - Optional overrides.
+ * @param {string} [options.model]       - Model ID to use instead of the provider default.
+ * @param {number} [options.temperature] - Sampling temperature (0–1). Defaults to DEFAULT_TEMPERATURE.
+ * @param {number} [options.maxTokens]   - Maximum tokens in the response. Defaults to 4096.
+ * @returns {Promise<string>} The text content of the AI's response.
+ * @throws {Error} If the provider key is unknown, if a non-429 API error occurs,
+ *                 or if all retry attempts are exhausted.
+ */
 async function callAI(provider, apiKey, messages, options = {}) {
   const config = PROVIDERS[provider];
   if (!config) throw new Error(`Unknown provider: ${provider}`);
 
+  // Consolidate call parameters, falling back to provider and global defaults.
   const params = {
     model: options.model || config.defaultModel,
     temperature: options.temperature ?? DEFAULT_TEMPERATURE,
@@ -177,8 +329,10 @@ async function callAI(provider, apiKey, messages, options = {}) {
   };
 
   let lastError;
+  // Attempt the call up to (1 + MAX_RETRIES) times total.
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 0) {
+      // Exponential back-off: 1 s, 2 s, 4 s, … capped by MAX_RETRIES.
       const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
       await new Promise(r => setTimeout(r, delay));
     }
@@ -186,13 +340,36 @@ async function callAI(provider, apiKey, messages, options = {}) {
       return await dispatchCall(config, apiKey, messages, params);
     } catch (e) {
       lastError = e;
+      // Only retry on rate-limit errors (429); surface all other errors immediately.
       if (e.status === 429) continue; // retry rate limits
       throw e;
     }
   }
+  // All retry attempts exhausted — re-throw the last captured error.
   throw lastError;
 }
 
+// ─── callAI dispatcher ───────────────────────────────────────────────
+//
+// dispatchCall acts as a simple strategy router: it inspects the provider's
+// `apiStyle` tag and calls the corresponding fetch adapter. This decouples the
+// retry logic in callAI from the per-provider HTTP details.
+//
+// Why a separate function (not inlined in callAI)?
+//   Keeps the retry loop clean and makes it easy to add new API styles
+//   without touching the retry/back-off code.
+//
+
+/**
+ * Routes a prepared API call to the appropriate provider-specific fetch adapter.
+ *
+ * @param {Object} config   - Provider config object from PROVIDERS.
+ * @param {string} apiKey   - User-supplied API key.
+ * @param {Array}  messages - Messages array in OpenAI role/content format.
+ * @param {Object} params   - Resolved call parameters (model, temperature, maxTokens).
+ * @returns {Promise<string>} The response text from the provider.
+ * @throws {Error} If config.apiStyle is not a recognised adapter name.
+ */
 function dispatchCall(config, apiKey, messages, params) {
   switch (config.apiStyle) {
     case 'anthropic': return fetchAnthropic(config, apiKey, messages, params);
@@ -203,21 +380,54 @@ function dispatchCall(config, apiKey, messages, params) {
   }
 }
 
+/**
+ * Creates and throws a normalised API error with the HTTP status attached as
+ * a property so that the retry logic in callAI can inspect it.
+ *
+ * @param {number} status - HTTP status code returned by the provider.
+ * @param {string} body   - Raw response body text (for inclusion in the message).
+ * @throws {Error} Always throws; never returns.
+ */
 function throwAPIError(status, body) {
   const err = new Error(`API error ${status}: ${body}`);
+  // Attach the numeric status so callers can branch on specific codes (e.g. 429).
   err.status = status;
   throw err;
 }
 
 // ─── Anthropic adapter ──────────────────────────────────────────────
+//
+// The Anthropic Messages API has its own request/response schema that differs
+// from the OpenAI standard in several ways:
+//   - Auth header is 'x-api-key' (lowercase, no 'Bearer' prefix).
+//   - An 'anthropic-version' header is mandatory to pin the API version.
+//   - 'anthropic-dangerous-direct-browser-access: true' is required when
+//     calling the API directly from a browser/extension context because
+//     Anthropic's SDK normally blocks non-server origins as a CSRF safeguard.
+//   - Request body uses 'max_tokens' (same name as OpenAI, different position).
+//   - Response text lives at data.content[0].text (an array of content blocks).
+//
 
+/**
+ * Calls the Anthropic Claude Messages API.
+ *
+ * @param {Object} config   - Anthropic provider config from PROVIDERS.
+ * @param {string} apiKey   - Anthropic API key (format: sk-ant-api03-...).
+ * @param {Array}  messages - Messages in OpenAI role/content format.
+ * @param {Object} params   - Resolved call params (model, temperature, maxTokens).
+ * @returns {Promise<string>} The text from the first content block of the response.
+ */
 async function fetchAnthropic(config, apiKey, messages, params) {
   const resp = await fetch(config.endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      // Anthropic uses a custom 'x-api-key' header, not the standard 'Authorization: Bearer'.
       'x-api-key': apiKey,
+      // Required header to pin the API contract version for Anthropic's Messages API.
       'anthropic-version': '2023-06-01',
+      // Required when calling Anthropic directly from a browser/extension context.
+      // Without this, Anthropic's CORS policy blocks the request.
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
@@ -229,16 +439,40 @@ async function fetchAnthropic(config, apiKey, messages, params) {
   });
   if (!resp.ok) throwAPIError(resp.status, await resp.text());
   const data = await resp.json();
+  // Anthropic returns an array of content blocks; extract the text of the first.
   return data.content?.[0]?.text || '';
 }
 
 // ─── OpenAI-compatible adapter (OpenAI, Groq, Cerebras, Together, OpenRouter, Mistral, DeepSeek) ──
+//
+// Many providers expose an API that is structurally identical to OpenAI's Chat
+// Completions endpoint. A single adapter handles all of them:
+//   - Auth: 'Authorization: Bearer <key>' for all.
+//   - Request body: { model, max_tokens, temperature, messages }.
+//   - Response text: choices[0].message.content.
+//
+// The only variation between these providers is the base URL (config.endpoint)
+// and, for OpenRouter, the additional 'HTTP-Referer' / 'X-Title' headers stored
+// in config.extraHeaders. These are merged into the headers object at call time.
+//
 
+/**
+ * Calls any OpenAI-compatible Chat Completions endpoint.
+ * Used for: OpenAI, Groq, Cerebras, Together AI, OpenRouter, Mistral, DeepSeek.
+ *
+ * @param {Object} config   - Provider config from PROVIDERS (apiStyle: 'openai').
+ * @param {string} apiKey   - Bearer token for the provider.
+ * @param {Array}  messages - Messages in OpenAI role/content format.
+ * @param {Object} params   - Resolved call params (model, temperature, maxTokens).
+ * @returns {Promise<string>} The assistant message content string.
+ */
 async function fetchOpenAI(config, apiKey, messages, params) {
   const headers = {
     'Content-Type': 'application/json',
+    // Standard Bearer token auth used by all OpenAI-compatible providers.
     'Authorization': `Bearer ${apiKey}`
   };
+  // Merge any provider-specific extra headers (e.g. OpenRouter's HTTP-Referer and X-Title).
   if (config.extraHeaders) Object.assign(headers, config.extraHeaders);
 
   const resp = await fetch(config.endpoint, {
@@ -253,16 +487,46 @@ async function fetchOpenAI(config, apiKey, messages, params) {
   });
   if (!resp.ok) throwAPIError(resp.status, await resp.text());
   const data = await resp.json();
+  // Standard OpenAI response path; all compatible providers mirror this structure.
   return data.choices?.[0]?.message?.content || '';
 }
 
 // ─── Google Gemini adapter ──────────────────────────────────────────
+//
+// The Gemini GenerativeLanguage REST API differs from OpenAI in several ways:
+//   - The API key is passed as a URL query parameter (?key=...) rather than in
+//     a request header. No Authorization header is sent at all.
+//   - The model ID is embedded in the URL path
+//     (e.g. /v1beta/models/gemini-2.5-flash:generateContent),
+//     not in the request body.
+//   - Message roles must be 'user' or 'model'; Gemini does not accept 'assistant'.
+//     The adapter translates 'assistant' → 'model' before sending.
+//   - Message content is structured as an array of 'parts' objects
+//     (e.g. [{ text: "..." }]) rather than a plain string.
+//   - The generation config uses 'maxOutputTokens' (not 'max_tokens').
+//   - Response text lives at candidates[0].content.parts[0].text.
+//
 
+/**
+ * Calls the Google Gemini GenerateContent API.
+ *
+ * @param {Object} config   - Gemini provider config from PROVIDERS.
+ * @param {string} apiKey   - Google AI Studio API key (format: AIza...).
+ * @param {Array}  messages - Messages in OpenAI role/content format.
+ * @param {Object} params   - Resolved call params (model, temperature, maxTokens).
+ * @returns {Promise<string>} The generated text from the first candidate's first part.
+ */
 async function fetchGemini(config, apiKey, messages, params) {
+  // Convert from OpenAI message format to Gemini's 'contents' format.
+  // 'assistant' role must become 'model' — Gemini rejects 'assistant'.
+  // Content is wrapped in a parts array as Gemini supports multi-modal inputs.
   const contents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }]
   }));
+
+  // Gemini's URL embeds both the model name and the action in the path.
+  // The API key is appended as a query parameter — no Authorization header used.
   const url = `${config.endpoint}/${params.model}:generateContent?key=${apiKey}`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -271,22 +535,42 @@ async function fetchGemini(config, apiKey, messages, params) {
       contents,
       generationConfig: {
         temperature: params.temperature,
+        // Gemini uses 'maxOutputTokens' where OpenAI uses 'max_tokens'.
         maxOutputTokens: params.maxTokens
       }
     })
   });
   if (!resp.ok) throwAPIError(resp.status, await resp.text());
   const data = await resp.json();
+  // Gemini response: candidates array → first candidate → content → parts array → first part text.
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ─── Cohere adapter ─────────────────────────────────────────────────
+//
+// Cohere's v2 Chat API is NOT OpenAI-compatible. Key differences:
+//   - Auth uses 'Authorization: Bearer <key>' (same header name as OpenAI),
+//     but the request and response bodies are different.
+//   - Response text is at data.message.content, which is an array of content
+//     blocks (each with a 'text' field). The adapter joins all blocks.
+//     If content is not an array (future-proofing), it is returned directly.
+//
 
+/**
+ * Calls the Cohere v2 Chat API.
+ *
+ * @param {Object} config   - Cohere provider config from PROVIDERS.
+ * @param {string} apiKey   - Cohere API key.
+ * @param {Array}  messages - Messages in OpenAI role/content format.
+ * @param {Object} params   - Resolved call params (model, temperature, maxTokens).
+ * @returns {Promise<string>} The concatenated text from all response content blocks.
+ */
 async function fetchCohere(config, apiKey, messages, params) {
   const resp = await fetch(config.endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      // Cohere uses 'Authorization: Bearer' like OpenAI, but the API schema differs.
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
@@ -298,20 +582,38 @@ async function fetchCohere(config, apiKey, messages, params) {
   });
   if (!resp.ok) throwAPIError(resp.status, await resp.text());
   const data = await resp.json();
+  // Cohere v2 returns content as an array of typed blocks; join all text blocks.
   const content = data.message?.content;
   if (Array.isArray(content)) return content.map(c => c.text).join('');
   return content || '';
 }
 
 // ─── JSON response parser (handles markdown-fenced responses) ───────
+//
+// AI models frequently wrap their JSON output in markdown code fences
+// (```json ... ```) even when instructed not to. This function attempts
+// four progressively looser parse strategies before giving up:
+//   1. Direct JSON.parse — handles clean responses.
+//   2. Strip ``` fences — handles the most common markdown wrapping.
+//   3. Extract first {...} block — handles responses with prose before/after.
+//   4. Extract first [...] block — handles array-valued responses with prose.
+//
 
+/**
+ * Parses a JSON value from an AI response string that may contain markdown
+ * code fences or surrounding prose.
+ *
+ * @param {string} text - Raw text returned by the AI model.
+ * @returns {*} The parsed JavaScript value (object, array, etc.).
+ * @throws {Error} If no valid JSON can be extracted by any strategy.
+ */
 function parseJSONResponse(text) {
-  // Try direct parse first
+  // Strategy 1: Try direct parse first — cheapest path for clean responses.
   try {
     return JSON.parse(text);
   } catch (_) { /* fall through */ }
 
-  // Strip markdown fences: ```json ... ``` or ``` ... ```
+  // Strategy 2: Strip markdown fences: ```json ... ``` or ``` ... ```
   const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
   if (fenceMatch) {
     try {
@@ -319,7 +621,8 @@ function parseJSONResponse(text) {
     } catch (_) { /* fall through */ }
   }
 
-  // Try to find first { ... } or [ ... ] block
+  // Strategy 3: Try to find first { ... } or [ ... ] block
+  // Handles cases where the model prefixes/suffixes the JSON with explanation text.
   const objMatch = text.match(/\{[\s\S]*\}/);
   if (objMatch) {
     try {
@@ -327,6 +630,7 @@ function parseJSONResponse(text) {
     } catch (_) { /* fall through */ }
   }
 
+  // Strategy 4: Try to find a top-level JSON array if no object was found.
   const arrMatch = text.match(/\[[\s\S]*\]/);
   if (arrMatch) {
     try {
@@ -334,11 +638,35 @@ function parseJSONResponse(text) {
     } catch (_) { /* fall through */ }
   }
 
+  // All strategies exhausted — the response cannot be parsed as JSON.
   throw new Error('Could not parse JSON from AI response');
 }
 
 // ─── Prompt templates ───────────────────────────────────────────────
+//
+// Each buildXxxPrompt function constructs the `messages` array that is passed
+// to callAI. All prompts use only a single 'user' turn (no system prompt) to
+// maximise compatibility across providers, some of which handle system prompts
+// differently or not at all.
+//
+// Prompts include explicit JSON schema examples and formatting rules to reduce
+// the likelihood of the model wrapping its response in prose or markdown.
+//
 
+// ─── Prompt: Resume Parser ────────────────────────────────────────
+
+/**
+ * Builds a prompt that instructs the model to extract structured data from
+ * raw resume text and return it as a typed JSON object.
+ *
+ * The JSON schema covers all common resume sections: contact info, summary,
+ * skills, experience, education, certifications, and projects. Fields that
+ * are absent in the source text should be returned as empty strings or arrays,
+ * ensuring the downstream code can always access every key without null checks.
+ *
+ * @param {string} rawText - Plain text extracted from the user's resume file.
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildResumeParsePrompt(rawText) {
   return [
     {
@@ -387,7 +715,24 @@ ${rawText}`
   ];
 }
 
+// ─── Prompt: Job Analysis ────────────────────────────────────────
+
+/**
+ * Builds a prompt that asks the model to compare a candidate's resume against
+ * a specific job posting and return a structured match analysis.
+ *
+ * The returned JSON includes a numeric match score (0–100), lists of matching
+ * and missing skills, actionable recommendations, and an insights block with
+ * strength/gap summaries and ATS keyword suggestions.
+ *
+ * @param {Object|string} resumeData    - Parsed resume object or raw resume text.
+ * @param {string}        jobDescription - Full text of the job posting.
+ * @param {string}        [jobTitle]     - Job title extracted from the posting.
+ * @param {string}        [company]      - Company name extracted from the posting.
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildJobAnalysisPrompt(resumeData, jobDescription, jobTitle, company) {
+  // Accept either a pre-parsed resume object or a raw string, normalising to text.
   const resumeText = typeof resumeData === 'string' ? resumeData : JSON.stringify(resumeData, null, 2);
   return [
     {
@@ -421,11 +766,36 @@ ${jobDescription}`
   ];
 }
 
+// ─── Prompt: Autofill ─────────────────────────────────────────────
+
+/**
+ * Builds a prompt for filling out a structured job application form.
+ *
+ * This is the most complex prompt in the file. It encodes strict behavioural
+ * rules to ensure the model acts as a deterministic selector rather than a
+ * creative generator:
+ *   - Dropdown and radio fields: the model MUST return an option that exists
+ *     character-for-character in the available_options list.
+ *   - Demographic fields (gender, race, etc.): if no saved answer exists, the
+ *     model must default to "Prefer not to say" / "Decline to self-identify"
+ *     rather than guessing.
+ *   - Text fields: generated using resume data and saved Q&A; fabrication is
+ *     explicitly prohibited.
+ *   - The sentinel value "NEEDS_USER_INPUT" signals that the extension should
+ *     prompt the user rather than auto-fill.
+ *
+ * @param {Object|string}          resumeData  - Parsed resume object or raw text.
+ * @param {Array<{question, answer}>} qaList   - User's saved Q&A pairs.
+ * @param {Array<Object>}          formFields  - Detected form fields with metadata
+ *                                               (question_id, field_type, available_options).
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildAutofillPrompt(resumeData, qaList, formFields) {
   const resumeText = typeof resumeData === 'string'
     ? resumeData
     : JSON.stringify(resumeData, null, 2);
 
+  // Flatten saved Q&A pairs into a readable block for the model.
   const qaText = (qaList || [])
     .map(qa => `Q: ${qa.question}\nA: ${qa.answer}`)
     .join('\n\n');
@@ -545,8 +915,31 @@ ${JSON.stringify(formFields, null, 2)}
   ];
 }
 
+// ─── Prompt: Dropdown matcher ─────────────────────────────────────
+
+/**
+ * Builds a focused single-question prompt for matching a saved Q&A answer to
+ * one specific dropdown's available options.
+ *
+ * This is used for targeted re-attempts when the bulk autofill prompt produces
+ * an invalid selection for a single dropdown/radio field. It applies the same
+ * semantic matching rules as the autofill prompt but for a single question at
+ * a time, making it easier for the model to reason carefully.
+ *
+ * Notable rules encoded in the prompt:
+ *   - The model must return the exact option text, character-for-character.
+ *   - The model must NOT include quotes, the option number, or explanations.
+ *   - The sentinel value "SKIP" is returned if no reasonable match exists.
+ *   - Demographic defaults ("Prefer not to say") apply here too.
+ *
+ * @param {Object|string|null}     profileData  - User profile/resume data for context.
+ * @param {Array<{question, answer}>} qaList    - User's saved Q&A pairs.
+ * @param {string}                 questionText - The form question label text.
+ * @param {string[]}               options      - The dropdown's available option strings.
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildDropdownMatchPrompt(profileData, qaList, questionText, options) {
-  // Filter to only Q&A entries with non-empty answers
+  // Filter to only Q&A entries with non-empty answers to reduce noise in the prompt.
   const relevantQA = (qaList || []).filter(qa => qa.answer && qa.answer.trim());
   const qaText = relevantQA.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n\n');
   const profileText = profileData ? (typeof profileData === 'string' ? profileData : JSON.stringify(profileData)) : '';
@@ -594,8 +987,31 @@ No quotes. No explanation. No number. Just the option text exactly as written.`
   ];
 }
 
+// ─── Prompt: Cover Letter ────────────────────────────────────────
+
+/**
+ * Builds a prompt that generates a tailored cover letter body for a specific
+ * job application.
+ *
+ * The prompt enforces strict structural and stylistic rules:
+ *   - Exactly 3 paragraphs (opening, skills match, closing CTA).
+ *   - 200–250 words — long enough to be substantive, short enough to be read.
+ *   - No address headers, date lines, salutations, signatures, or placeholders.
+ *   - Must reference specific skills from the resume and the actual job/company.
+ *   - Output is plain text only — no JSON, no markdown.
+ *
+ * The top 6 matching skills from the prior job analysis are injected to help
+ * the model focus on the most relevant talking points.
+ *
+ * @param {Object|string} resumeData     - Parsed resume object or raw text.
+ * @param {string}        jobDescription - Full text of the job posting.
+ * @param {Object|null}   [analysis]     - Job analysis result from buildJobAnalysisPrompt
+ *                                         (used to extract pre-computed matchingSkills).
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildCoverLetterPrompt(resumeData, jobDescription, analysis) {
   const resumeText = typeof resumeData === 'string' ? resumeData : JSON.stringify(resumeData, null, 2);
+  // Limit to 6 skills to keep the prompt focused and avoid overwhelming the model.
   const matchingSkills = (analysis?.matchingSkills || []).slice(0, 6).join(', ');
   return [
     {
@@ -622,7 +1038,30 @@ Return ONLY the cover letter body text. No JSON, no markdown, no extra commentar
   ];
 }
 
+// ─── Prompt: Bullet rewriter ─────────────────────────────────────
+
+/**
+ * Builds a prompt that rewrites existing resume experience bullets to better
+ * align with a target job description.
+ *
+ * Key constraints:
+ *   - The model must rewrite existing bullets, not fabricate new ones.
+ *   - Missing skills from the job analysis are supplied so the model can
+ *     weave them in where they genuinely fit.
+ *   - Job description is truncated to 3000 characters to stay within token limits
+ *     while retaining the most important keywords near the top of the JD.
+ *   - Output is a JSON array of { job, original, improved } objects.
+ *
+ * @param {Object|string} resumeData      - Parsed resume object or raw text.
+ *                                          If an object, the experience array is
+ *                                          used to build a readable text block.
+ * @param {string}        jobDescription  - Full text of the job posting (truncated to 3000 chars).
+ * @param {string[]}      [missingSkills] - Skills identified as gaps in the job analysis.
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildBulletRewritePrompt(resumeData, jobDescription, missingSkills) {
+  // Build a human-readable experience summary from structured data if available,
+  // otherwise fall back to raw text or JSON serialisation.
   const experience = (typeof resumeData === 'object' && resumeData.experience)
     ? resumeData.experience.map(e => `${e.title || ''} at ${e.company || ''}:\n${e.description || ''}`).join('\n\n')
     : (typeof resumeData === 'string' ? resumeData : JSON.stringify(resumeData));
@@ -657,6 +1096,15 @@ Return ONLY a JSON array:
   ];
 }
 
+// ─── Prompt: Connection test ──────────────────────────────────────
+
+/**
+ * Builds a minimal prompt used to verify that a provider API key is valid and
+ * the endpoint is reachable. The model is instructed to return a fixed JSON
+ * response, making it trivial to confirm the round-trip succeeded.
+ *
+ * @returns {Array<{role: string, content: string}>} A single-message messages array.
+ */
 function buildTestPrompt() {
   return [
     {
@@ -667,6 +1115,11 @@ function buildTestPrompt() {
 }
 
 // ─── Exports (for service worker import) ────────────────────────────
+//
+// All public symbols are exported as named exports for use by background.js.
+// This file uses ES module syntax (export {}) and is loaded as a module
+// script in the extension's service worker manifest entry.
+//
 
 export {
   callAI,
