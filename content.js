@@ -1817,7 +1817,7 @@
         margin-top: 4px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         font-size: 11px;
-        color: #667eea;
+        color: #e53e3e;
         opacity: 0.85;
         pointer-events: none;
         user-select: none;
@@ -1844,11 +1844,10 @@
     const badge = document.createElement('div');
     badge.className = 'jmai-badge';
     badge.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 1l1.5 4.5H14l-3.75 2.75L11.5 13 8 10.25 4.5 13l1.25-4.75L2 5.5h4.5L8 1z" fill="#667eea"/>
+      <path d="M8 1l1.5 4.5H14l-3.75 2.75L11.5 13 8 10.25 4.5 13l1.25-4.75L2 5.5h4.5L8 1z" fill="#e53e3e"/>
     </svg>Autofilled by JobMatch AI`;
-    // Insert after the element (or after its parent label if inside one)
-    const anchor = el.closest('label') || el;
-    anchor.parentNode.insertBefore(badge, anchor.nextSibling);
+    // Insert directly after the field element itself (below the answer, not the label)
+    el.parentNode.insertBefore(badge, el.nextSibling);
   }
 
   /**
