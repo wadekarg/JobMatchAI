@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy – JobMatch AI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      line-height: 1.7;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 48px 24px 40px;
+      text-align: center;
+    }
+
+    header .logo {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    header .tagline {
+      font-size: 15px;
+      opacity: 0.85;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    .meta {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 36px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    h2 {
+      font-size: 19px;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 36px 0 10px;
+    }
+
+    h2:first-of-type { margin-top: 0; }
+
+    p { margin-bottom: 14px; color: #334155; }
+
+    ul {
+      margin: 8px 0 14px 20px;
+      color: #334155;
+    }
+
+    ul li { margin-bottom: 6px; }
+
+    .highlight-box {
+      background: #f0fdf4;
+      border-left: 4px solid #10b981;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: 15px;
+      color: #065f46;
+      font-weight: 500;
+    }
+
+    .section {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 16px;
+    }
+
+    .section h2 { margin-top: 0; }
+
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: #94a3b8;
+      padding: 24px;
+      border-top: 1px solid #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">★ JobMatch AI</div>
+  <div class="tagline">Smart Resume &amp; Job Analyzer – Chrome Extension</div>
+</header>
+
+<div class="container">
+
+  <div class="meta">
+    <strong>Privacy Policy</strong> &nbsp;·&nbsp; Last updated: March 15, 2026 &nbsp;·&nbsp;
+    Extension version 1.0.0
+  </div>
+
+  <div class="highlight-box">
+    Short version: Your resume and personal data stay on your device. Nothing is sent to us or any third party — only to the AI provider you choose and configure yourself.
+  </div>
+
+  <div class="section">
+    <h2>1. What This Extension Does</h2>
+    <p>
+      JobMatch AI is a Chrome browser extension that helps job seekers analyze job postings against their resume,
+      auto-fill job applications, generate cover letters, and track applied jobs. All processing happens locally
+      in your browser or through the AI API provider you select.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>2. Data We Collect and Store</h2>
+    <p>JobMatch AI stores the following data <strong>locally on your device</strong> using Chrome's built-in
+    <code>chrome.storage.local</code> API. This data never leaves your device except as described in Section 3.</p>
+    <ul>
+      <li><strong>Resume data</strong> — your name, contact info, skills, work experience, education, and any other content from your uploaded resume (PDF or DOCX).</li>
+      <li><strong>Q&amp;A answers</strong> — pre-configured answers to common job application questions (work authorization, demographics, salary expectations, etc.).</li>
+      <li><strong>AI provider settings</strong> — the provider you selected, your API key, and chosen model. Your API key is stored locally and only transmitted to the AI provider's own servers.</li>
+      <li><strong>Job analysis cache</strong> — analysis results for recently viewed job postings, stored to avoid redundant API calls (up to 50 entries, automatically trimmed).</li>
+      <li><strong>Applied jobs &amp; saved jobs</strong> — a list of jobs you've marked as applied or saved, including job title, company, location, salary, match score, and the job URL.</li>
+      <li><strong>Job notes</strong> — any free-text notes you type into the extension for individual job postings.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>3. Data Sent Externally</h2>
+    <p>
+      The only data transmitted outside your device is sent to the <strong>AI provider you configure</strong>
+      (e.g., Cerebras, Groq, Google Gemini, OpenAI, Anthropic, etc.) when you trigger an AI action such as
+      Analyze Job, AutoFill, Generate Cover Letter, or Improve Resume Bullets.
+    </p>
+    <p>In those cases, the following is sent to your chosen AI provider's API:</p>
+    <ul>
+      <li>The job description text scraped from the current page</li>
+      <li>Relevant portions of your resume profile (skills, experience, education)</li>
+      <li>Detected form field labels (for autofill)</li>
+    </ul>
+    <p>
+      This data is sent directly from your browser to the AI provider — <strong>it does not pass through
+      any server operated by JobMatch AI</strong>. The AI provider's own privacy policy governs how they
+      handle this data. We recommend reviewing the privacy policy of whichever provider you choose.
+    </p>
+    <p>
+      <strong>We do not operate any backend server.</strong> There is no JobMatch AI server that receives,
+      stores, or processes your data.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>4. Data We Do NOT Collect</h2>
+    <ul>
+      <li>We do <strong>not</strong> collect analytics, usage statistics, or telemetry of any kind.</li>
+      <li>We do <strong>not</strong> track which job sites you visit.</li>
+      <li>We do <strong>not</strong> share any data with advertisers or data brokers.</li>
+      <li>We do <strong>not</strong> have access to your Chrome browsing history.</li>
+      <li>We do <strong>not</strong> transmit your resume or personal information to any server we operate.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>5. Permissions Used and Why</h2>
+    <ul>
+      <li><strong>storage</strong> — to save your resume profile, Q&amp;A answers, settings, and job history locally on your device.</li>
+      <li><strong>activeTab</strong> — to read the job description and detect form fields on the current tab when you click Analyze Job or AutoFill.</li>
+      <li><strong>scripting</strong> — to inject the side panel UI into supported job sites when you activate the extension.</li>
+      <li><strong>tabs</strong> — to open the Profile/Settings page and to forward messages between the popup and the content script.</li>
+      <li><strong>Host permissions</strong> (specific AI provider domains) — to make direct API calls from your browser to the AI provider you configure. Only the provider you select is ever contacted.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>6. Your API Key</h2>
+    <p>
+      Your AI provider API key is stored locally in <code>chrome.storage.local</code> on your device.
+      It is only ever sent to the API endpoint of the provider you selected — never to any other server.
+      We recommend:
+    </p>
+    <ul>
+      <li>Using an API key with only the minimum permissions required by your provider.</li>
+      <li>Rotating your API key periodically, especially if you suspect it may have been exposed.</li>
+      <li>Revoking the key from your provider's dashboard if you uninstall the extension.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>7. How to Delete Your Data</h2>
+    <p>All data stored by JobMatch AI can be deleted at any time:</p>
+    <ul>
+      <li><strong>Individual data</strong> — clear your resume, Q&amp;A answers, or settings from within the extension's Profile &amp; Settings page.</li>
+      <li><strong>All data</strong> — go to <code>chrome://extensions</code> → JobMatch AI → click the three-dot menu → <strong>Remove extension</strong>. This deletes all locally stored data immediately.</li>
+      <li>Alternatively, go to <code>chrome://settings/siteData</code>, search for the extension, and clear its storage.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>8. Children's Privacy</h2>
+    <p>
+      JobMatch AI is intended for use by adults seeking employment. We do not knowingly collect
+      any information from children under the age of 13.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>9. Changes to This Policy</h2>
+    <p>
+      If we make material changes to this privacy policy, we will update the "Last updated" date at the top
+      of this page and may post a notice in the extension. Continued use of the extension after any changes
+      constitutes acceptance of the updated policy.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>10. Contact</h2>
+    <p>
+      If you have questions about this privacy policy or how JobMatch AI handles your data, please open
+      an issue on the project's GitHub repository:
+    </p>
+    <p>
+      <a href="https://github.com/wadekarg/JobMatchAI/issues" target="_blank" rel="noopener">
+        github.com/wadekarg/JobMatchAI/issues
+      </a>
+    </p>
+  </div>
+
+</div>
+
+<footer>
+  © 2026 JobMatch AI &nbsp;·&nbsp;
+  <a href="https://github.com/wadekarg/JobMatchAI">GitHub</a> &nbsp;·&nbsp;
+  Open Source – MIT License
+</footer>
+
+</body>
+</html>
