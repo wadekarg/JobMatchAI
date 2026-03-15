@@ -53,6 +53,11 @@
   let _pendingQuestions = null; // Detected form field descriptors matching _pendingAnswers
   let _fieldMap         = {};   // Map of question_id → { el, type, ... } built during field detection
 
+  // Resume slot switcher state — mirrors chrome.storage.local slot data
+  let _activeSlot = 0;                                  // Currently selected slot index (0-2)
+  let _slotNames  = ['Resume 1', 'Resume 2', 'Resume 3']; // Display names for each slot
+  let _slotHasData = [false, false, false];             // Whether each slot has a profile loaded
+
   // ─── Persistent analysis cache (chrome.storage.local) ──────────
   // Caching analysis results prevents redundant API calls when the user
   // closes and reopens the panel or navigates back to a job they already viewed.
@@ -610,6 +615,56 @@
         border-color: #667eea;
         box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
       }
+
+      /* Resume slot switcher */
+      .jm-resume-switcher {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .jm-switch-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .jm-switch-pills {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .jm-switch-pill {
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        border: 1.5px solid #cbd5e1;
+        background: transparent;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .jm-switch-pill:hover:not(:disabled) {
+        border-color: #667eea;
+        color: #667eea;
+      }
+      .jm-switch-pill.active {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border-color: transparent;
+        color: white;
+        font-weight: 600;
+      }
+      .jm-switch-pill:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
     `;
   }
 
@@ -643,6 +698,12 @@
             <span id="jmJobLocation" style="display:none">&#128205; <span id="jmJobLocationText"></span></span>
             <span id="jmJobSalary" style="display:none">&#128176; <span id="jmJobSalaryText"></span></span>
           </div>
+        </div>
+
+        <!-- Resume slot switcher -->
+        <div class="jm-resume-switcher" id="jmResumeSwitch">
+          <span class="jm-switch-label">Resume:</span>
+          <div class="jm-switch-pills" id="jmSwitchPills"></div>
         </div>
 
         <div class="jm-actions">
@@ -868,6 +929,87 @@
     document.body.appendChild(host);
   }
 
+  // ─── Resume slot switcher ─────────────────────────────────────
+
+  /**
+   * Loads slot state from chrome.storage.local and renders the switcher pills.
+   * Called when the panel opens so the switcher always reflects current storage.
+   * @async
+   */
+  async function loadSlotState() {
+    try {
+      const result = await chrome.storage.local.get(['profileSlots', 'activeProfileSlot', 'slotNames']);
+      _activeSlot  = result.activeProfileSlot ?? 0;
+      _slotNames   = result.slotNames   || ['Resume 1', 'Resume 2', 'Resume 3'];
+      const slots  = result.profileSlots || [null, null, null];
+      _slotHasData = slots.map(s => !!s);
+      renderSlotSwitcher();
+    } catch (e) { /* ignore — switcher stays hidden */ }
+  }
+
+  /**
+   * Renders the three slot pills into #jmSwitchPills.
+   * Disables pills for empty slots. Marks the active slot with .active class.
+   */
+  function renderSlotSwitcher() {
+    const container = shadowRoot && shadowRoot.getElementById('jmSwitchPills');
+    if (!container) return;
+    container.innerHTML = '';
+    _slotNames.forEach((name, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'jm-switch-pill' + (i === _activeSlot ? ' active' : '');
+      btn.textContent = name || `Resume ${i + 1}`;
+      btn.title = _slotHasData[i] ? name : `${name} (empty)`;
+      btn.disabled = !_slotHasData[i];
+      btn.addEventListener('click', () => switchSlot(i));
+      container.appendChild(btn);
+    });
+  }
+
+  /**
+   * Switches the active resume slot, updates chrome.storage.local, and resets
+   * the current analysis so the user re-analyzes with the new resume.
+   * @async
+   * @param {number} slotIndex - The slot index (0, 1, or 2) to switch to.
+   */
+  async function switchSlot(slotIndex) {
+    if (slotIndex === _activeSlot) return;
+    try {
+      const result = await chrome.storage.local.get(['profileSlots', 'slotNames']);
+      const slots  = result.profileSlots || [null, null, null];
+      if (!slots[slotIndex]) return; // slot is empty — should not happen (button is disabled)
+
+      // Persist the new active slot and update the top-level `profile` key
+      // so background.js always reads the correct resume for AI calls.
+      await chrome.storage.local.set({
+        activeProfileSlot: slotIndex,
+        profile: slots[slotIndex]
+      });
+
+      _activeSlot = slotIndex;
+      renderSlotSwitcher();
+
+      // Reset analysis — it was scored against the previous resume
+      currentAnalysis = null;
+      const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
+      if (analyzeBtn) analyzeBtn.textContent = 'Analyze Job';
+
+      // Hide all result sections so the panel is clean for the new resume
+      ['jmScoreSection','jmMatchingSection','jmMissingSection','jmRecsSection',
+       'jmInsightsSection','jmKeywordsSection','jmCoverLetterSection','jmBulletSection',
+       'jmSaveJob','jmMarkApplied','jmCoverLetterBtn','jmRewriteBulletsBtn'
+      ].forEach(id => {
+        const el = shadowRoot.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+
+      setStatus(`Switched to ${_slotNames[slotIndex] || `Resume ${slotIndex + 1}`}. Click Analyze Job.`, 'success');
+      setTimeout(clearStatus, 2500);
+    } catch (e) {
+      setStatus('Could not switch resume: ' + e.message, 'error');
+    }
+  }
+
   // ─── Panel toggle ─────────────────────────────────────────────
 
   /**
@@ -886,6 +1028,7 @@
       panelRoot.classList.add('open');
       panel.classList.add('open');
       if (toggleHost) toggleHost.style.display = 'none';
+      loadSlotState();
       checkIfApplied();
       loadJobNotes();
     } else {
@@ -2513,6 +2656,7 @@
         if (el) el.style.display = 'none';
       });
       loadJobNotes();
+      loadSlotState();
       setStatus('New job detected — click Analyze Job.', 'info');
       setTimeout(clearStatus, 3000);
     }
