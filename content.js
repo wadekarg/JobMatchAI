@@ -1520,15 +1520,14 @@
   }
 
   // ─── AutoFill ─────────────────────────────────────────────────
-  // The autofill pipeline has three phases:
-  //   1. Detect  — detectFormFields() scans the page and builds _fieldMap.
-  //   2. Preview — showAutofillPreview() shows the AI's suggestions for review.
-  //   3. Apply   — applyAutofill() calls fillFormFromAnswers() to fill the form.
-  // The user can cancel after the preview step without any fields being touched.
+  // The autofill pipeline:
+  //   1. Detect — detectFormFields() scans the page and builds _fieldMap.
+  //   2. AI     — GENERATE_AUTOFILL sends questions to background, gets answers.
+  //   3. Fill   — fillFormFromAnswers() immediately writes answers into the form.
 
   /**
    * Initiates the autofill pipeline: detects fields, asks AI for answers,
-   * then shows a preview panel for the user to review before applying.
+   * then immediately fills the form.
    * @async
    */
   async function autofillForm() {
@@ -1545,7 +1544,7 @@
         return;
       }
 
-      setStatus(`Found ${questions.length} fields. Getting AI suggestions...`, 'info');
+      setStatus(`Found ${questions.length} fields. Filling...`, 'info');
 
       // Step 2: send serializable questions to AI (no DOM refs)
       const questionsForAI = questions.map(q => {
@@ -1560,24 +1559,18 @@
         formFields: questionsForAI
       });
 
-      // Step 3: show inline chips on the page near each form field
+      // Step 3: directly fill the form
       const answers = response.answers || response;
-      _pendingAnswers = answers;
-      _pendingQuestions = questions;
-      showInlineChips(answers);
-      clearStatus();
-      // Change button to "Cancel AutoFill" while chips are active
-      btn.innerHTML = '✕ Cancel AutoFill';
-      btn.onclick = () => {
-        clearAllChips();
-        btn.innerHTML = 'AutoFill Application';
-        btn.onclick = null; // restore default click handler
-      };
+      const { filled, skipped } = await fillFormFromAnswers(answers);
+      const msg = `Filled ${filled} field${filled === 1 ? '' : 's'}` +
+        (skipped.length ? ` (${skipped.length} need your input)` : '');
+      setStatus(msg, 'success');
+      setTimeout(clearStatus, 3000);
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      if (!_chips.size) btn.innerHTML = 'AutoFill Application';
+      btn.innerHTML = 'AutoFill Application';
     }
   }
 
