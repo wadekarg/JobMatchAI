@@ -1810,8 +1810,45 @@
         outline: 2.5px solid #667eea !important;
         outline-offset: 2px !important;
       }
+      .jmai-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 4px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 11px;
+        color: #667eea;
+        opacity: 0.85;
+        pointer-events: none;
+        user-select: none;
+      }
+      .jmai-badge svg {
+        width: 11px;
+        height: 11px;
+        flex-shrink: 0;
+      }
     `;
     document.head.appendChild(style);
+  }
+
+  /**
+   * Inserts a small "✦ Autofilled by JobMatch AI" badge below a filled field.
+   * Skips if a badge already exists next to this element.
+   * @param {Element} el - The filled form element (input, select, radio, etc.).
+   */
+  function showAutofillBadge(el) {
+    if (!el || !el.parentNode) return;
+    injectChipStyles();
+    // Avoid duplicate badges
+    if (el.parentNode.querySelector('.jmai-badge')) return;
+    const badge = document.createElement('div');
+    badge.className = 'jmai-badge';
+    badge.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1l1.5 4.5H14l-3.75 2.75L11.5 13 8 10.25 4.5 13l1.25-4.75L2 5.5h4.5L8 1z" fill="#667eea"/>
+    </svg>Autofilled by JobMatch AI`;
+    // Insert after the element (or after its parent label if inside one)
+    const anchor = el.closest('label') || el;
+    anchor.parentNode.insertBefore(badge, anchor.nextSibling);
   }
 
   /**
@@ -2432,6 +2469,7 @@
               });
               if (bestOption && bestOption !== 'SKIP' && bestOption !== 'NEEDS_USER_INPUT') {
                 fillSelectByText(ref.el, bestOption, ref.optionMap, ref.optionTexts);
+                showAutofillBadge(ref.el);
                 filled++;
                 continue;
               }
@@ -2440,24 +2478,31 @@
           }
           // Fallback: use the bulk AI answer directly
           fillSelectByText(ref.el, val, ref.optionMap, ref.optionTexts);
+          showAutofillBadge(ref.el);
           filled++;
         } else if (ref.type === 'custom_dropdown') {
           if (await fillCustomDropdown(ref.el, ref.questionText || val)) {
+            showAutofillBadge(ref.el);
             filled++;
           } else {
             skipped.push(qid);
           }
         } else if (ref.type === 'radio') {
           if (fillRadioFromRef(ref.radios, val)) {
+            // Badge goes below the last radio in the group
+            const lastRadio = ref.radios[ref.radios.length - 1]?.el || ref.radios[0]?.el;
+            showAutofillBadge(lastRadio);
             filled++;
           } else {
             skipped.push(qid);
           }
         } else if (ref.type === 'checkbox') {
           fillCheckboxFromRef(ref.el, val);
+          showAutofillBadge(ref.el);
           filled++;
         } else {
           fillInput(ref.el, val);
+          showAutofillBadge(ref.el);
           filled++;
         }
       } catch (e) {
@@ -2482,10 +2527,13 @@
       if (!ref) continue;
       if (ref.type === 'dropdown') {
         fillSelectByText(ref.el, value, ref.optionMap, ref.optionTexts);
+        showAutofillBadge(ref.el);
       } else if (ref.type === 'custom_dropdown') {
         await fillCustomDropdown(ref.el, ref.questionText || value);
+        showAutofillBadge(ref.el);
       } else {
         fillInput(ref.el, value);
+        showAutofillBadge(ref.el);
       }
       filled++;
     }
