@@ -93,9 +93,17 @@ See an overview of your job search progress — total jobs analyzed, applied, av
 </p>
 <p align="center"><em>Stats tab — job search analytics at a glance: jobs analyzed, applied, average match score, score distribution, and the top skills missing from your resume across all analyzed jobs.</em></p>
 
+### Saved Jobs
+
+Bookmark jobs from the side panel and review them in the **Saved** tab — with score badges, company, and quick links back to the posting.
+
+### Three Themes
+
+Switch between **Ocean Blue** (light), **Dark Mode**, and **Warm Amber** with one click — using the theme toggle button (☀️ 🌙 🌻) in the panel header or profile page.
+
 ### Consistent, Cached Scores
 
-Analysis results are cached per URL with deterministic AI settings (temperature=0), so you get the same score every time for the same job. Click **Re-Analyze** to force a fresh evaluation.
+Analysis results are cached per URL with deterministic AI settings (temperature=0) and a 24-hour TTL, so you get the same score every time for the same job. Click **Re-Analyze** to force a fresh evaluation.
 
 ---
 
@@ -112,7 +120,7 @@ Analysis results are cached per URL with deterministic AI settings (temperature=
 
 4. Click **Load unpacked** and select the `JobMatchAI` folder
 
-5. Pin the extension from the puzzle icon in Chrome's toolbar for easy access
+5. Pin the extension from the puzzle icon in Chrome's toolbar — clicking it toggles the side panel directly
 
 ---
 
@@ -157,7 +165,7 @@ The same process applies to all providers: **sign up → find API Keys in dashbo
 </p>
 <p align="center"><em>AI Settings — select your provider, paste your API key, pick a model, adjust temperature, and hit Test Connection to verify before saving.</em></p>
 
-Click the extension icon → **AI Settings** tab (or open the side panel → Settings link).
+Open the side panel (click the ★ floating button or the toolbar icon) → **Settings** nav tab.
 
 - Select your AI provider
 - Enter your API key
@@ -235,7 +243,6 @@ JobMatchAI/
 ├── content.js               # Side panel UI, job scraping, autofill, badges
 ├── aiService.js             # AI provider abstraction (API calls, prompt builders)
 ├── deterministicMatcher.js  # Rule-based dropdown matching (no AI needed)
-├── popup.html / popup.js    # Extension toolbar popup
 ├── profile.html / profile.js # Profile, Q&A, Applied Jobs, Stats, Settings page
 ├── styles.css               # Content script base styles
 ├── icons/                   # Extension icons (16, 48, 128px)

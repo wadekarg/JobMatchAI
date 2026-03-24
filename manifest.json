@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobMatch AI – Smart Resume & Job Analyzer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Analyze job postings against your resume using AI. Get match scores, skill gap analysis, and auto-fill applications.",
   "permissions": [
     "storage",
