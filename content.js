@@ -129,7 +129,7 @@
     warm: { bg: '#d97706', shadow: 'rgba(217,119,6,0.4)' }
   };
   // Next theme's primary color shown inside the toggle button
-  const THEME_NEXT_INDICATOR = { blue: '#1e3a5f', dark: '#d97706', warm: '#3b82f6' };
+  const THEME_ICONS = { blue: '\u2600\uFE0F', dark: '\uD83C\uDF19', warm: '\uD83C\uDF3B' };
   let _currentTheme = 'blue';
 
   /**
@@ -154,10 +154,10 @@
     if (shadowRoot) {
       const themeBtn = shadowRoot.getElementById('jmThemeToggle');
       if (themeBtn) {
+        themeBtn.textContent = THEME_ICONS[theme] || THEME_ICONS.blue;
         const nextIdx = (THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length;
-        const nextColor = THEME_FAB_COLORS[THEME_ORDER[nextIdx]].bg;
-        themeBtn.style.borderColor = nextColor;
-        themeBtn.title = `Switch to ${THEME_ORDER[nextIdx] === 'blue' ? 'Ocean Blue' : THEME_ORDER[nextIdx] === 'dark' ? 'Dark Mode' : 'Warm Amber'}`;
+        const nextName = THEME_ORDER[nextIdx] === 'blue' ? 'Ocean Blue' : THEME_ORDER[nextIdx] === 'dark' ? 'Dark Mode' : 'Warm Amber';
+        themeBtn.title = `Switch to ${nextName}`;
       }
     }
   }
@@ -326,7 +326,10 @@
       #jm-panel.theme-dark .jm-header { background: #1e3a5f !important; }
       #jm-panel.theme-warm .jm-header { background: #d97706 !important; }
 
-      .jm-header h2 { font-size: 16px; font-weight: 600; }
+      .jm-header h2 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin: 0; }
+      .jm-header h2 span { font-size: 40px; line-height: 1; flex-shrink: 0; }
+      .jm-header .jm-title-text { display: flex; flex-direction: column; }
+      .jm-header .jm-title-text .jm-subtitle { font-size: 11px; font-weight: 400; opacity: 0.8; margin-top: 2px; }
 
       /* Theme toggle button */
       .jm-theme-btn {
@@ -348,7 +351,7 @@
       .jm-theme-btn:hover {
         background: rgba(255,255,255,0.3);
       }
-      .jm-header .jm-subtitle { font-size: 11px; opacity: 0.8; }
+      /* subtitle is now styled via .jm-title-text .jm-subtitle */
 
       .jm-close {
         background: rgba(255,255,255,0.2);
@@ -637,15 +640,15 @@
       /* Toggle button (outside panel) */
       .jm-toggle {
         position: fixed;
-        width: 48px;
-        height: 48px;
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
         background: var(--jm-fab-bg, #3b82f6);
         color: white;
         border: none;
         cursor: grab;
         box-shadow: 0 4px 12px var(--jm-fab-shadow, rgba(59,130,246,0.4));
-        font-size: 20px;
+        font-size: 40px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -902,12 +905,15 @@
   function getPanelHTML() {
     return `
       <div class="jm-header">
-        <div>
-          <h2>JobMatch AI</h2>
-          <div class="jm-subtitle">Resume & Job Analyzer</div>
-        </div>
+        <h2>
+          <span>&#9733;</span>
+          <div class="jm-title-text">
+            JobMatch AI
+            <span class="jm-subtitle">Resume & Job Analyzer</span>
+          </div>
+        </h2>
         <div style="display:flex;align-items:center;gap:8px;">
-          <button class="jm-theme-btn" id="jmThemeToggle" title="Switch theme">&#9680;</button>
+          <button class="jm-theme-btn" id="jmThemeToggle" title="Switch theme">&#9728;&#65039;</button>
         </div>
       </div>
       <div class="jm-nav">

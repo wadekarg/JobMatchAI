@@ -1620,6 +1620,7 @@ function handleHash() {
 
 const THEME_ORDER_PROFILE = ['blue', 'dark', 'warm'];
 const THEME_HEADER_COLORS = { blue: '#3b82f6', dark: '#1e3a5f', warm: '#d97706' };
+const THEME_ICONS_PROFILE = { blue: '\u2600\uFE0F', dark: '\uD83C\uDF19', warm: '\uD83C\uDF3B' };
 
 /**
  * Applies the given theme to the profile page body.
@@ -1634,9 +1635,9 @@ function applyProfileTheme(theme) {
   if (btn) {
     const nextIdx = (THEME_ORDER_PROFILE.indexOf(theme) + 1) % THEME_ORDER_PROFILE.length;
     const nextTheme = THEME_ORDER_PROFILE[nextIdx];
-    const nextColor = THEME_HEADER_COLORS[nextTheme];
-    btn.style.borderColor = nextColor;
-    btn.title = `Switch to ${nextTheme === 'blue' ? 'Ocean Blue' : nextTheme === 'dark' ? 'Dark Mode' : 'Warm Amber'}`;
+    btn.textContent = THEME_ICONS_PROFILE[theme] || THEME_ICONS_PROFILE.blue;
+    const nextName = nextTheme === 'blue' ? 'Ocean Blue' : nextTheme === 'dark' ? 'Dark Mode' : 'Warm Amber';
+    btn.title = `Switch to ${nextName}`;
   }
 }
 
