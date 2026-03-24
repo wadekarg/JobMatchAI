@@ -15,3 +15,9 @@
   width: 380px;
   pointer-events: auto;
 }
+
+@media (max-width: 500px) {
+  #jobmatch-ai-panel-host.open {
+    width: 100vw !important;
+  }
+}

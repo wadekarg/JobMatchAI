@@ -309,6 +309,16 @@ function matchAnswerToOption(savedAnswer, options, topic) {
   const answerLower = savedAnswer.toLowerCase().trim();
   const answerNorm  = normalize(savedAnswer);
 
+  // ── Strategy 0: Pronouns exact match ─────────────────────────────────────
+  // Pronoun values like "she/her", "he/him", "they/them" should match by
+  // exact case-insensitive comparison before any normalization strips the
+  // slashes, which would cause false positives in fuzzy matching.
+  if (topic === 'pronouns') {
+    for (const opt of options) {
+      if (opt.toLowerCase().trim() === answerLower) return opt;
+    }
+  }
+
   // ── Strategy 1: Exact match (case-insensitive) ────────────────────────────
   // The cheapest check — covers the common case where the user typed the
   // option text verbatim (e.g., saved "Male", option is "Male").
@@ -357,7 +367,7 @@ function matchAnswerToOption(savedAnswer, options, topic) {
   // full option string, which can include parenthetical country lists.
   // Note: this block intentionally duplicates some logic from strategies 3/4
   // to ensure nothing is missed for this particularly variable topic.
-  if (topic === 'race_ethnicity') {
+  if (['race_ethnicity', 'disability', 'veteran'].includes(topic)) {
     for (const opt of options) {
       const optLower = opt.toLowerCase();
 
@@ -434,6 +444,8 @@ function findDeclineOption(options) {
   const declinePatterns = [
     'prefer not to say', 'decline to self-identify', 'decline to answer',
     'prefer not to answer', 'choose not to disclose', 'i prefer not',
+    'choose not to answer', "i don't wish to answer", 'prefer not to specify',
+    'decline to state', 'rather not say',
     'decline', 'not to say', 'not to disclose'
   ];
 

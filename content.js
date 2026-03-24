@@ -47,6 +47,7 @@
   let currentAnalysis = null;   // The most recent analysis result for the current page
   let panelRoot = null;         // The host DOM element that contains the Shadow DOM panel
   let shadowRoot = null;        // The closed Shadow DOM root — panel elements are queried from here
+  let toggleBtnRef = null;      // Reference to the floating toggle button (inside closed Shadow DOM)
 
   // AutoFill state
   let _pendingAnswers   = null; // kept for legacy compatibility
@@ -686,6 +687,11 @@
         opacity: 0.35;
         cursor: not-allowed;
       }
+
+      @media (max-width: 500px) {
+        #jm-panel { width: 100vw !important; }
+        .jm-body { padding: 12px !important; }
+      }
     `;
   }
 
@@ -869,6 +875,11 @@
     btn.id = 'jobmatch-ai-toggle';
     btn.innerHTML = '&#9733;';
     btn.title = 'JobMatch AI';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', 'Open JobMatch AI panel');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.setAttribute('tabindex', '0');
+    toggleBtnRef = btn;
 
     // Restore saved position or default to bottom-right
     const saved = (() => {
@@ -940,6 +951,14 @@
         ? Math.abs(pos.left - startLeft) > 4 || Math.abs(pos.top - startTop) > 4
         : false;
       if (!moved) togglePanel();
+    });
+
+    // Keyboard accessibility: Enter and Space trigger toggle
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        togglePanel();
+      }
     });
 
     // Attach to shadow root for isolation
@@ -1048,6 +1067,13 @@
 
     const panel = shadowRoot.getElementById('jm-panel');
     const toggleHost = document.getElementById('jobmatch-ai-toggle-host');
+
+    // Update accessibility attributes on the toggle button
+    if (toggleBtnRef) {
+      toggleBtnRef.setAttribute('aria-label', panelOpen ? 'Close JobMatch AI panel' : 'Open JobMatch AI panel');
+      toggleBtnRef.setAttribute('aria-pressed', String(panelOpen));
+    }
+
     if (panelOpen) {
       panelRoot.classList.add('open');
       panel.classList.add('open');
@@ -1320,6 +1346,16 @@
       }
 
       showJobMeta(title, company, location, salary);
+
+      // Warn if the extracted JD is too short to produce reliable results,
+      // but don't block — the user can still trigger analysis.
+      if (jd.length < 100) {
+        setStatus('Could not extract enough job details from this page. Try copying the job description manually.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Analyze Job';
+        return;
+      }
+
       setStatus('Analyzing job match...', 'info');
 
       const response = await sendMessage({

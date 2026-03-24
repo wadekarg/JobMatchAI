@@ -42,6 +42,37 @@ let profileData = {
 };
 
 /**
+ * Tracks whether the profile form has unsaved changes.
+ * Set to true on any form edit; reset to false after a successful save.
+ * @type {boolean}
+ */
+let profileDirty = false;
+
+/**
+ * Marks the profile as dirty and highlights the save button to indicate
+ * unsaved changes.
+ */
+function markProfileDirty() {
+  profileDirty = true;
+  const btn = document.getElementById('saveProfileBtn');
+  if (btn) btn.style.background = '#f59e0b';
+}
+
+/**
+ * Marks the profile as clean and reverts the save button to its default style.
+ */
+function markProfileClean() {
+  profileDirty = false;
+  const btn = document.getElementById('saveProfileBtn');
+  if (btn) btn.style.background = '';
+}
+
+// Warn the user when navigating away with unsaved profile changes
+window.addEventListener('beforeunload', (e) => {
+  if (profileDirty) { e.preventDefault(); }
+});
+
+/**
  * In-memory list of Q&A entries displayed in the Q&A tab.
  * Each entry: { question, answer, category, type, options? }
  * Loaded from storage on init and flushed via SAVE_QA_LIST.
@@ -217,6 +248,7 @@ async function handleFile(file) {
     populateProfileForm();
     showResumeLoaded(file.name);
     setUploadStatus('Resume parsed successfully! Review and edit below.', 'success');
+    markProfileDirty();
   } catch (err) {
     setUploadStatus('Error: ' + err.message, 'error');
   }
@@ -282,6 +314,11 @@ function populateProfileForm() {
   renderProjects();
 }
 
+// ─── Dirty tracking for personal info fields ─────────────────────────────────
+['pName', 'pEmail', 'pPhone', 'pLocation', 'pLinkedin', 'pWebsite', 'pSummary'].forEach(id => {
+  document.getElementById(id).addEventListener('input', markProfileDirty);
+});
+
 // ─── Skills ───────────────────────────────────────────────────────────────────
 
 /**
@@ -304,6 +341,7 @@ function renderSkills() {
     btn.addEventListener('click', () => {
       profileData.skills.splice(parseInt(btn.dataset.idx), 1);
       renderSkills();
+      markProfileDirty();
     });
   });
 }
@@ -321,6 +359,7 @@ function addSkill() {
   if (!profileData.skills.includes(val)) {
     profileData.skills.push(val);
     renderSkills();
+    markProfileDirty();
   }
   input.value = '';
 }
@@ -350,6 +389,7 @@ function renderCerts() {
     btn.addEventListener('click', () => {
       profileData.certifications.splice(parseInt(btn.dataset.idx), 1);
       renderCerts();
+      markProfileDirty();
     });
   });
 }
@@ -365,6 +405,7 @@ function addCert() {
   if (!profileData.certifications.includes(val)) {
     profileData.certifications.push(val);
     renderCerts();
+    markProfileDirty();
   }
   input.value = '';
 }
@@ -415,11 +456,13 @@ function createExperienceEntry(exp, idx) {
   div.querySelector('.remove-entry').addEventListener('click', () => {
     profileData.experience.splice(idx, 1);
     renderExperience();
+    markProfileDirty();
   });
   // Sync edits back to state — each field uses data-field to identify which key to update
   div.querySelectorAll('input, textarea').forEach(input => {
     input.addEventListener('input', () => {
       profileData.experience[idx][input.dataset.field] = input.value;
+      markProfileDirty();
     });
   });
   return div;
@@ -430,6 +473,7 @@ document.getElementById('addExpBtn').addEventListener('click', () => {
   if (!profileData.experience) profileData.experience = [];
   profileData.experience.push({ title: '', company: '', dates: '', description: '' });
   renderExperience();
+  markProfileDirty();
 });
 
 // ─── Education ────────────────────────────────────────────────────────────────
@@ -471,10 +515,12 @@ function createEducationEntry(edu, idx) {
   div.querySelector('.remove-entry').addEventListener('click', () => {
     profileData.education.splice(idx, 1);
     renderEducation();
+    markProfileDirty();
   });
   div.querySelectorAll('input, textarea').forEach(input => {
     input.addEventListener('input', () => {
       profileData.education[idx][input.dataset.field] = input.value;
+      markProfileDirty();
     });
   });
   return div;
@@ -484,6 +530,7 @@ document.getElementById('addEduBtn').addEventListener('click', () => {
   if (!profileData.education) profileData.education = [];
   profileData.education.push({ degree: '', school: '', dates: '', details: '' });
   renderEducation();
+  markProfileDirty();
 });
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -526,6 +573,7 @@ function createProjectEntry(proj, idx) {
   div.querySelector('.remove-entry').addEventListener('click', () => {
     profileData.projects.splice(idx, 1);
     renderProjects();
+    markProfileDirty();
   });
   div.querySelectorAll('input, textarea').forEach(input => {
     input.addEventListener('input', () => {
@@ -536,6 +584,7 @@ function createProjectEntry(proj, idx) {
       } else {
         profileData.projects[idx][field] = input.value;
       }
+      markProfileDirty();
     });
   });
   return div;
@@ -545,6 +594,7 @@ document.getElementById('addProjBtn').addEventListener('click', () => {
   if (!profileData.projects) profileData.projects = [];
   profileData.projects.push({ name: '', description: '', technologies: [] });
   renderProjects();
+  markProfileDirty();
 });
 
 // ─── Save profile ─────────────────────────────────────────────────────────────
@@ -567,12 +617,23 @@ document.getElementById('saveProfileBtn').addEventListener('click', async () => 
   profileData.website  = document.getElementById('pWebsite').value.trim();
   profileData.summary  = document.getElementById('pSummary').value.trim();
 
+  // ── Basic validation (only if fields are filled in) ──
+  if (profileData.email && (!/[@]/.test(profileData.email) || !/[.]/.test(profileData.email))) {
+    showToast('Please enter a valid email address');
+    return;
+  }
+  if (profileData.phone && (profileData.phone.replace(/\D/g, '').length < 10)) {
+    showToast('Please enter a valid phone number');
+    return;
+  }
+
   try {
     await sendMessage({ type: 'SAVE_PROFILE', profile: profileData });
     // Deep-copy into the active slot so the slot array always reflects the latest save
     profileSlots[activeSlot] = JSON.parse(JSON.stringify(profileData));
     await chrome.storage.local.set({ profileSlots });
     updateSlotButtons();
+    markProfileClean();
     showToast('Profile saved!');
   } catch (err) {
     showToast('Error saving: ' + err.message);

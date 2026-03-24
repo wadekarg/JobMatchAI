@@ -623,129 +623,94 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @throws {Error} For unknown message types or when handler prerequisites fail.
  * @returns {Promise<*>} The result value produced by the matched handler.
  */
-async function handleMessage(message, sender) {
-  switch (message.type) {
+// ── Handler registry ──────────────────────────────────────────────────────
+// Maps message type strings to handler functions. Replaces the former switch
+// statement for cleaner routing and easier extensibility.
 
-    // ── AI operations ──────────────────────────────────────────────────────
-    // These cases all result in at least one HTTP call to an external AI API.
+const handlers = {
+  // ── AI operations ──────────────────────────────────────────────────────
+  // These handlers all result in at least one HTTP call to an external AI API.
 
-    case 'TEST_CONNECTION':
-      // Validate that the stored API key is accepted by the configured provider
-      return handleTestConnection();
+  'TEST_CONNECTION': (msg) => handleTestConnection(),
 
-    case 'PARSE_RESUME':
-      // Extract structured profile data from raw resume text (from file upload)
-      return handleParseResume(message.rawText);
+  'PARSE_RESUME': (msg) => handleParseResume(msg.rawText),
 
-    case 'ANALYZE_JOB':
-      // Score the current job posting against the user's profile
-      return handleAnalyzeJob(message.jobDescription, message.jobTitle, message.company);
+  'ANALYZE_JOB': (msg) => handleAnalyzeJob(msg.jobDescription, msg.jobTitle, msg.company),
 
-    case 'GENERATE_AUTOFILL':
-      // Map the detected form fields to profile / Q&A data
-      return handleGenerateAutofill(message.formFields);
+  'GENERATE_AUTOFILL': (msg) => handleGenerateAutofill(msg.formFields),
 
-    case 'MATCH_DROPDOWN':
-      // Choose the best option from a dropdown (deterministic first, AI fallback)
-      return handleMatchDropdown(message.questionText, message.options);
+  'MATCH_DROPDOWN': (msg) => handleMatchDropdown(msg.questionText, msg.options),
 
-    // ── Storage operations ─────────────────────────────────────────────────
-    // Direct reads and writes to chrome.storage.local; no AI calls involved.
+  // ── Storage operations ─────────────────────────────────────────────────
+  // Direct reads and writes to chrome.storage.local; no AI calls involved.
 
-    case 'SAVE_PROFILE':
-      // Persist a parsed (or manually edited) profile object to storage
-      await chrome.storage.local.set({ profile: message.profile });
-      return { success: true };
+  'SAVE_PROFILE': async (msg) => {
+    await chrome.storage.local.set({ profile: msg.profile });
+    return { success: true };
+  },
 
-    case 'GET_PROFILE':
-      // Return the current profile (or null if none has been uploaded)
-      return getProfile();
+  'GET_PROFILE': (msg) => getProfile(),
 
-    case 'SAVE_SETTINGS':
-      // Persist the user's AI provider / key / model / temperature settings
-      await chrome.storage.local.set({ aiSettings: message.settings });
-      return { success: true };
+  'SAVE_SETTINGS': async (msg) => {
+    await chrome.storage.local.set({ aiSettings: msg.settings });
+    return { success: true };
+  },
 
-    case 'GET_SETTINGS':
-      // Return current AI settings, falling back to safe defaults if unset
-      return getSettings();
+  'GET_SETTINGS': (msg) => getSettings(),
 
-    case 'SAVE_QA_LIST':
-      // Enforce a cap of 200 Q&A entries
-      if (message.qaList && message.qaList.length > 200) {
-        throw new Error('Q&A list is limited to 200 entries. Please remove some before adding new ones.');
-      }
-      // Persist the user's custom Q&A pairs used to supplement autofill
-      await chrome.storage.local.set({ qaList: message.qaList });
-      return { success: true };
-
-    case 'GET_QA_LIST':
-      // Return the Q&A list (or [] if the user has not added any pairs yet)
-      return getQAList();
-
-    // ── Job management ─────────────────────────────────────────────────────
-    // CRUD operations for saved / applied job lists plus AI-assisted writing.
-
-    case 'SAVE_JOB':
-      // Bookmark a job posting to review later (capped at 100 entries)
-      return handleSaveJob(message.jobData);
-
-    case 'DELETE_JOB':
-      // Remove a bookmarked job by its generated ID
-      return handleDeleteJob(message.jobId);
-
-    case 'GET_SAVED_JOBS':
-      // Retrieve the full saved-jobs array for display in the popup
-      return getSavedJobs();
-
-    case 'GENERATE_COVER_LETTER':
-      // Write a tailored cover letter for the given job / analysis pair
-      return handleGenerateCoverLetter(message.jobDescription, message.analysis);
-
-    case 'REWRITE_BULLETS':
-      // Reframe the user's experience bullets to address identified skill gaps
-      return handleRewriteBullets(message.jobDescription, message.missingSkills);
-
-    case 'MARK_APPLIED':
-      // Record that the user has submitted an application for this job
-      return handleMarkApplied(message.jobData);
-
-    case 'GET_APPLIED_JOBS':
-      // Retrieve the full applied-jobs array (capped at 500 entries)
-      return getAppliedJobs();
-
-    case 'DELETE_APPLIED_JOB':
-      // Remove an applied-job record by its generated ID
-      return handleDeleteAppliedJob(message.jobId);
-
-    case 'OPEN_PROFILE_TAB': {
-      // Open the profile.html page in a new tab.  An optional hash suffix lets
-      // callers deep-link to a specific section (e.g. '#ai-settings').
-      const hash = message.hash ? '#' + message.hash : '';
-      await chrome.tabs.create({ url: chrome.runtime.getURL('profile.html' + hash) });
-      return { success: true };
+  'SAVE_QA_LIST': async (msg) => {
+    if (msg.qaList && msg.qaList.length > 200) {
+      throw new Error('Q&A list is limited to 200 entries. Please remove some before adding new ones.');
     }
+    await chrome.storage.local.set({ qaList: msg.qaList });
+    return { success: true };
+  },
 
-    case 'GET_PROVIDERS':
-      // Return the static list of supported AI providers for the settings UI
-      return PROVIDERS;
+  'GET_QA_LIST': (msg) => getQAList(),
 
-    // ── Tab forwarding ─────────────────────────────────────────────────────
-    // The popup cannot directly address content scripts (it does not have a
-    // tab ID), so these messages are relayed through the service worker which
-    // can identify the active tab and forward the message to its content script.
+  // ── Job management ─────────────────────────────────────────────────────
+  // CRUD operations for saved / applied job lists plus AI-assisted writing.
 
-    case 'TOGGLE_PANEL':
-    case 'TRIGGER_ANALYZE':
-    case 'TRIGGER_AUTOFILL':
-      // Forward the message as-is to the content script in the active tab
-      return forwardToActiveTab(message);
+  'SAVE_JOB': (msg) => handleSaveJob(msg.jobData),
 
-    default:
-      // Throw so the router's catch block returns a { success: false } envelope
-      // to the caller, making unhandled message types visible during development.
-      throw new Error(`Unknown message type: ${message.type}`);
-  }
+  'DELETE_JOB': (msg) => handleDeleteJob(msg.jobId),
+
+  'GET_SAVED_JOBS': (msg) => getSavedJobs(),
+
+  'GENERATE_COVER_LETTER': (msg) => handleGenerateCoverLetter(msg.jobDescription, msg.analysis),
+
+  'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
+
+  'MARK_APPLIED': (msg) => handleMarkApplied(msg.jobData),
+
+  'GET_APPLIED_JOBS': (msg) => getAppliedJobs(),
+
+  'DELETE_APPLIED_JOB': (msg) => handleDeleteAppliedJob(msg.jobId),
+
+  'OPEN_PROFILE_TAB': async (msg) => {
+    const hash = msg.hash ? '#' + msg.hash : '';
+    await chrome.tabs.create({ url: chrome.runtime.getURL('profile.html' + hash) });
+    return { success: true };
+  },
+
+  'GET_PROVIDERS': (msg) => PROVIDERS,
+
+  // ── Tab forwarding ─────────────────────────────────────────────────────
+  // The popup cannot directly address content scripts (it does not have a
+  // tab ID), so these messages are relayed through the service worker which
+  // can identify the active tab and forward the message to its content script.
+
+  'TOGGLE_PANEL': (msg) => forwardToActiveTab(msg),
+
+  'TRIGGER_ANALYZE': (msg) => forwardToActiveTab(msg),
+
+  'TRIGGER_AUTOFILL': (msg) => forwardToActiveTab(msg),
+};
+
+async function handleMessage(message, sender) {
+  const handler = handlers[message.type];
+  if (!handler) throw new Error(`Unknown message type: ${message.type}`);
+  return handler(message);
 }
 
 /**
