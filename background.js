@@ -738,6 +738,24 @@ async function forwardToActiveTab(message) {
 }
 
 
+// ─── Toolbar icon click handler ──────────────────────────────────────────────
+//
+// With no default_popup in the manifest, clicking the toolbar icon fires
+// chrome.action.onClicked instead of opening a popup. We use this to send a
+// TOGGLE_PANEL message directly to the active tab's content script, giving
+// users a single-click toggle for the side panel.
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.id) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' });
+    } catch (e) {
+      // Content script not loaded on this page (e.g. chrome:// pages)
+    }
+  }
+});
+
+
 // ─── Extension install handler ───────────────────────────────────────────────
 
 /**

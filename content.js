@@ -169,7 +169,7 @@
         width: 380px;
         height: 100vh;
         background: #f8f9fb;
-        box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+        box-shadow: none;
         display: flex;
         flex-direction: column;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -177,10 +177,15 @@
         color: #1a1a2e;
         overflow: hidden;
         transform: translateX(100%);
-        transition: transform 0.3s ease;
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 2147483646;
+        pointer-events: auto;
       }
 
-      #jm-panel.open { transform: translateX(0); }
+      #jm-panel.open {
+        transform: translateX(0);
+        box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+      }
 
       .jm-header {
         background: #3b82f6;
@@ -235,6 +240,12 @@
       .jm-nav-btn:hover {
         color: #3b82f6;
         background: #eff6ff;
+      }
+
+      .jm-nav-btn.active {
+        color: #3b82f6;
+        border-bottom: 2px solid #3b82f6;
+        font-weight: 600;
       }
 
       .jm-body {
@@ -462,6 +473,17 @@
         gap: 4px;
       }
 
+      /* Backdrop (transparent overlay to capture outside clicks) */
+      .jm-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: transparent;
+        z-index: 2147483645;
+      }
+
       /* Toggle button (outside panel) */
       .jm-toggle {
         position: fixed;
@@ -478,7 +500,7 @@
         align-items: center;
         justify-content: center;
         transition: box-shadow 0.2s, transform 0.2s;
-        z-index: 2147483646;
+        z-index: 2147483647;
         user-select: none;
         touch-action: none;
       }
@@ -688,6 +710,32 @@
         cursor: not-allowed;
       }
 
+      /* Saved jobs tab */
+      .jm-saved-list { display: flex; flex-direction: column; gap: 8px; }
+      .jm-saved-card {
+        background: #f8fafc; border-radius: 8px; padding: 12px;
+        position: relative; border: 1px solid #e2e8f0;
+        transition: border-color 0.15s;
+      }
+      .jm-saved-card:hover { border-color: #3b82f6; }
+      .jm-saved-title { font-weight: 600; font-size: 13px; color: #1e293b; text-decoration: none; display: block; margin-bottom: 4px; }
+      .jm-saved-title:hover { color: #3b82f6; }
+      .jm-saved-company { font-size: 12px; color: #64748b; }
+      .jm-saved-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #94a3b8; }
+      .jm-saved-score { padding: 2px 8px; border-radius: 4px; color: #fff; font-weight: 600; font-size: 11px; }
+      .jm-saved-delete {
+        position: absolute; top: 8px; right: 8px;
+        background: none; border: none; cursor: pointer;
+        color: #cbd5e1; font-size: 16px; line-height: 1;
+        transition: color 0.15s;
+      }
+      .jm-saved-delete:hover { color: #ef4444; }
+      .jm-saved-empty { text-align: center; color: #94a3b8; font-size: 13px; padding: 32px 16px; }
+
+      /* Tab content visibility */
+      .jm-tab-content { display: none; }
+      .jm-tab-content.active { display: block; }
+
       @media (max-width: 500px) {
         #jm-panel { width: 100vw !important; }
         .jm-body { padding: 12px !important; }
@@ -708,14 +756,23 @@
           <h2>JobMatch AI</h2>
           <div class="jm-subtitle">Resume & Job Analyzer</div>
         </div>
-        <button class="jm-close" id="jmClose">&times;</button>
       </div>
       <div class="jm-nav">
         <button class="jm-nav-btn" data-nav="profile">Profile</button>
         <button class="jm-nav-btn" data-nav="qa">Q&A</button>
+        <button class="jm-nav-btn" data-nav="saved">Saved</button>
         <button class="jm-nav-btn" data-nav="settings">Settings</button>
       </div>
       <div class="jm-body">
+        <!-- Saved Jobs tab -->
+        <div class="jm-tab-content" id="jmSavedTab">
+          <div class="jm-saved-list" id="jmSavedList">
+            <div class="jm-saved-empty" id="jmSavedEmpty">No saved jobs yet. Click 'Save Job' on any job posting to bookmark it.</div>
+          </div>
+        </div>
+
+        <!-- Main content (default) -->
+        <div class="jm-tab-content active" id="jmMainTab">
         <div class="jm-status" id="jmStatus"></div>
 
         <div class="jm-job-info" id="jmJobInfo">
@@ -810,6 +867,7 @@
           <h3>Notes</h3>
           <textarea class="jm-notes-textarea" id="jmNotesInput" placeholder="Add notes about this job — saved automatically..."></textarea>
         </div>
+        </div><!-- end jmMainTab -->
       </div>
     `;
   }
@@ -820,7 +878,6 @@
    * @param {HTMLElement} panel - The #jm-panel element inside the Shadow DOM.
    */
   function wireEvents(panel) {
-    panel.querySelector('#jmClose').addEventListener('click', togglePanel);
     panel.querySelector('#jmAnalyze').addEventListener('click', () => {
       const btn = shadowRoot.getElementById('jmAnalyze');
       // If button says "Re-Analyze", force refresh; otherwise use cache
@@ -847,13 +904,183 @@
     panel.querySelector('#jmNotesInput').addEventListener('blur', saveJobNotes);
     panel.querySelector('#jmNotesInput').addEventListener('input', saveJobNotes);
 
-    // Nav buttons → open profile page at the right tab
+    // Nav buttons → open profile page at the right tab, or switch to Saved tab
     panel.querySelectorAll('.jm-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const tab = btn.dataset.nav;
-        chrome.runtime.sendMessage({ type: 'OPEN_PROFILE_TAB', hash: tab });
+        if (tab === 'saved') {
+          // Switch to Saved tab within the panel
+          activateSavedTab();
+        } else {
+          // Deactivate Saved tab highlight if switching away
+          deactivateSavedTab();
+          chrome.runtime.sendMessage({ type: 'OPEN_PROFILE_TAB', hash: tab });
+        }
       });
     });
+  }
+
+  // ─── Saved Jobs tab ──────────────────────────────────────────
+
+  /**
+   * Activates the Saved tab: highlights the nav button, shows the saved
+   * tab content, hides the main tab content, and fetches saved jobs.
+   */
+  function activateSavedTab() {
+    if (!shadowRoot) return;
+    // Highlight the Saved nav button
+    shadowRoot.querySelectorAll('.jm-nav-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.nav === 'saved');
+    });
+    // Show saved tab, hide main tab
+    const savedTab = shadowRoot.getElementById('jmSavedTab');
+    const mainTab = shadowRoot.getElementById('jmMainTab');
+    if (savedTab) savedTab.classList.add('active');
+    if (mainTab) mainTab.classList.remove('active');
+    // Fetch and render saved jobs each time the tab is activated
+    loadSavedJobs();
+  }
+
+  /**
+   * Deactivates the Saved tab: removes nav highlight, hides saved tab,
+   * and restores the main tab content.
+   */
+  function deactivateSavedTab() {
+    if (!shadowRoot) return;
+    shadowRoot.querySelectorAll('.jm-nav-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const savedTab = shadowRoot.getElementById('jmSavedTab');
+    const mainTab = shadowRoot.getElementById('jmMainTab');
+    if (savedTab) savedTab.classList.remove('active');
+    if (mainTab) mainTab.classList.add('active');
+  }
+
+  /**
+   * Fetches saved jobs from background.js and renders them in the Saved tab.
+   * @async
+   */
+  async function loadSavedJobs() {
+    if (!shadowRoot) return;
+    const list = shadowRoot.getElementById('jmSavedList');
+    const emptyMsg = shadowRoot.getElementById('jmSavedEmpty');
+    if (!list) return;
+
+    try {
+      const jobs = await sendMessage({ type: 'GET_SAVED_JOBS' });
+      // Clear previous cards (keep the empty message element)
+      list.querySelectorAll('.jm-saved-card').forEach(c => c.remove());
+
+      if (!jobs || jobs.length === 0) {
+        if (emptyMsg) emptyMsg.style.display = 'block';
+        return;
+      }
+
+      if (emptyMsg) emptyMsg.style.display = 'none';
+
+      jobs.forEach(job => {
+        const card = document.createElement('div');
+        card.className = 'jm-saved-card';
+        card.dataset.jobId = job.id;
+
+        // Title link
+        const title = document.createElement('a');
+        title.className = 'jm-saved-title';
+        title.textContent = job.title || 'Unknown Position';
+        title.href = job.url || '#';
+        title.target = '_blank';
+        title.rel = 'noopener';
+
+        // Company
+        const company = document.createElement('div');
+        company.className = 'jm-saved-company';
+        company.textContent = job.company || 'Unknown Company';
+
+        // Meta row (score + date)
+        const meta = document.createElement('div');
+        meta.className = 'jm-saved-meta';
+
+        if (job.score != null && job.score !== 0) {
+          const score = document.createElement('span');
+          score.className = 'jm-saved-score';
+          score.textContent = job.score + '%';
+          if (job.score >= 70) score.style.background = '#059669';
+          else if (job.score >= 45) score.style.background = '#d97706';
+          else score.style.background = '#dc2626';
+          meta.appendChild(score);
+        }
+
+        if (job.date) {
+          const date = document.createElement('span');
+          date.textContent = 'Saved ' + job.date;
+          meta.appendChild(date);
+        }
+
+        // Delete button
+        const del = document.createElement('button');
+        del.className = 'jm-saved-delete';
+        del.innerHTML = '&#10005;';
+        del.title = 'Remove saved job';
+        del.addEventListener('click', () => deleteSavedJob(job.id, card));
+
+        card.appendChild(title);
+        card.appendChild(company);
+        card.appendChild(meta);
+        card.appendChild(del);
+        list.appendChild(card);
+      });
+    } catch (e) {
+      // Silently fail — user can retry by switching tabs
+    }
+  }
+
+  /**
+   * Deletes a saved job by ID (optimistic UI removal).
+   * @async
+   * @param {string} jobId - The saved job's ID.
+   * @param {HTMLElement} cardEl - The card DOM element to remove.
+   */
+  async function deleteSavedJob(jobId, cardEl) {
+    // Optimistic removal from DOM
+    cardEl.remove();
+
+    // Show empty state if no cards remain
+    if (shadowRoot) {
+      const list = shadowRoot.getElementById('jmSavedList');
+      const emptyMsg = shadowRoot.getElementById('jmSavedEmpty');
+      if (list && list.querySelectorAll('.jm-saved-card').length === 0 && emptyMsg) {
+        emptyMsg.style.display = 'block';
+      }
+    }
+
+    try {
+      await sendMessage({ type: 'DELETE_JOB', jobId: jobId });
+    } catch (e) {
+      // If delete fails, reload the list to restore correct state
+      loadSavedJobs();
+    }
+  }
+
+  /**
+   * Checks if the current page URL is already saved and updates
+   * the Save Job button to show "Saved" state if so.
+   * @async
+   */
+  async function checkIfSaved() {
+    try {
+      const jobs = await sendMessage({ type: 'GET_SAVED_JOBS' });
+      const btn = shadowRoot.getElementById('jmSaveJob');
+      if (!btn) return;
+      if (jobs && jobs.some(j => j.url === window.location.href)) {
+        btn.textContent = 'Saved';
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+      } else {
+        btn.textContent = 'Save Job';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    } catch (e) { /* ignore */ }
   }
 
   // ─── Toggle button (always visible) ────────────────────────────
@@ -883,74 +1110,90 @@
 
     // Restore saved position or default to bottom-right
     const saved = (() => {
-      try { return JSON.parse(localStorage.getItem('jm_btn_pos')); } catch { return null; }
+      try { return JSON.parse(localStorage.getItem('jm-fab-pos')); } catch { return null; }
     })();
-    btn.style.right  = saved ? 'auto' : '16px';
-    btn.style.bottom = saved ? 'auto' : '24px';
-    btn.style.left   = saved ? saved.left + 'px' : 'auto';
-    btn.style.top    = saved ? saved.top  + 'px' : 'auto';
-
-    // ── Drag logic ──
-    let dragging = false, startX, startY, startLeft, startTop;
-
-    function getPos() {
-      const r = btn.getBoundingClientRect();
-      return { left: r.left, top: r.top };
+    const defaultRight = 24;
+    const defaultBottom = 24;
+    if (saved && typeof saved.right === 'number' && typeof saved.bottom === 'number') {
+      btn.style.right  = saved.right + 'px';
+      btn.style.bottom = saved.bottom + 'px';
+      btn.style.left   = 'auto';
+      btn.style.top    = 'auto';
+    } else {
+      btn.style.right  = defaultRight + 'px';
+      btn.style.bottom = defaultBottom + 'px';
+      btn.style.left   = 'auto';
+      btn.style.top    = 'auto';
     }
 
+    // ── Drag logic ──
+    let didDrag = false, startX, startY, startRight, startBottom;
+    const MIN_MARGIN = 8;
+    const DRAG_THRESHOLD = 4;
+
     function onMove(e) {
-      if (!dragging) return;
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
-      const newLeft = Math.min(Math.max(0, startLeft + cx - startX), window.innerWidth  - 48);
-      const newTop  = Math.min(Math.max(0, startTop  + cy - startY), window.innerHeight - 48);
-      btn.style.right  = 'auto';
-      btn.style.bottom = 'auto';
-      btn.style.left   = newLeft + 'px';
-      btn.style.top    = newTop  + 'px';
+      const dx = cx - startX;
+      const dy = cy - startY;
+
+      // Only start dragging after movement exceeds threshold
+      if (!didDrag && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      didDrag = true;
+      btn.classList.add('dragging');
+
+      // Calculate new right/bottom with bounds checking (8px min margin)
+      let newRight  = startRight - dx;
+      let newBottom = startBottom - dy;
+      newRight  = Math.max(MIN_MARGIN, Math.min(newRight,  window.innerWidth  - 48 - MIN_MARGIN));
+      newBottom = Math.max(MIN_MARGIN, Math.min(newBottom, window.innerHeight - 48 - MIN_MARGIN));
+
+      btn.style.right  = newRight + 'px';
+      btn.style.bottom = newBottom + 'px';
+      btn.style.left   = 'auto';
+      btn.style.top    = 'auto';
     }
 
     function onEnd(e) {
-      if (!dragging) return;
-      dragging = false;
       btn.classList.remove('dragging');
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onEnd);
       document.removeEventListener('touchmove', onMove);
       document.removeEventListener('touchend',  onEnd);
-      const pos = getPos();
-      try { localStorage.setItem('jm_btn_pos', JSON.stringify(pos)); } catch {}
+
+      if (didDrag) {
+        // Save position as {right, bottom}
+        const pos = {
+          right:  parseInt(btn.style.right,  10),
+          bottom: parseInt(btn.style.bottom, 10)
+        };
+        try { localStorage.setItem('jm-fab-pos', JSON.stringify(pos)); } catch {}
+      }
     }
 
     btn.addEventListener('mousedown', e => {
-      const pos = getPos();
       startX = e.clientX; startY = e.clientY;
-      startLeft = pos.left; startTop = pos.top;
-      dragging = true;
-      btn.classList.add('dragging');
+      startRight  = parseInt(btn.style.right,  10) || defaultRight;
+      startBottom = parseInt(btn.style.bottom, 10) || defaultBottom;
+      didDrag = false;
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup',   onEnd);
       e.preventDefault();
     });
 
     btn.addEventListener('touchstart', e => {
-      const pos = getPos();
       startX = e.touches[0].clientX; startY = e.touches[0].clientY;
-      startLeft = pos.left; startTop = pos.top;
-      dragging = true;
-      btn.classList.add('dragging');
+      startRight  = parseInt(btn.style.right,  10) || defaultRight;
+      startBottom = parseInt(btn.style.bottom, 10) || defaultBottom;
+      didDrag = false;
       document.addEventListener('touchmove', onMove, { passive: false });
       document.addEventListener('touchend',  onEnd);
       e.preventDefault();
     }, { passive: false });
 
-    // Only fire click if not dragged
+    // Only fire click if not dragged (threshold already checked during move)
     btn.addEventListener('click', e => {
-      const pos = getPos();
-      const moved = saved
-        ? Math.abs(pos.left - startLeft) > 4 || Math.abs(pos.top - startTop) > 4
-        : false;
-      if (!moved) togglePanel();
+      if (!didDrag) togglePanel();
     });
 
     // Keyboard accessibility: Enter and Space trigger toggle
@@ -1061,12 +1304,16 @@
    * When opening, also triggers checkIfApplied() and loadJobNotes()
    * so the panel always reflects the latest state for the current URL.
    */
+  // Reference to the backdrop element inside the panel's shadow DOM
+  let _backdropEl = null;
+  // Reference to the escape key handler so we can add/remove it
+  let _escHandler = null;
+
   function togglePanel() {
     panelOpen = !panelOpen;
     if (!panelRoot) createPanel();
 
     const panel = shadowRoot.getElementById('jm-panel');
-    const toggleHost = document.getElementById('jobmatch-ai-toggle-host');
 
     // Update accessibility attributes on the toggle button
     if (toggleBtnRef) {
@@ -1075,17 +1322,45 @@
     }
 
     if (panelOpen) {
+      // Create backdrop inside the shadow DOM
+      if (!_backdropEl) {
+        _backdropEl = document.createElement('div');
+        _backdropEl.className = 'jm-backdrop';
+        _backdropEl.addEventListener('click', () => togglePanel());
+        shadowRoot.insertBefore(_backdropEl, shadowRoot.firstChild.nextSibling);
+      } else {
+        _backdropEl.style.display = 'block';
+      }
+
       panelRoot.classList.add('open');
       panel.classList.add('open');
-      if (toggleHost) toggleHost.style.display = 'none';
+
+      // Add Escape key handler
+      _escHandler = (e) => {
+        if (e.key === 'Escape' && panelOpen) togglePanel();
+      };
+      document.addEventListener('keydown', _escHandler);
+
       loadSlotState();
       checkIfApplied();
+      checkIfSaved();
       loadJobNotes();
+      // Ensure we start on the main tab when opening the panel
+      deactivateSavedTab();
     } else {
       panel.classList.remove('open');
       panelRoot.classList.remove('open');
-      if (toggleHost) toggleHost.style.display = '';
+
+      // Hide backdrop
+      if (_backdropEl) _backdropEl.style.display = 'none';
+
+      // Remove Escape key handler
+      if (_escHandler) {
+        document.removeEventListener('keydown', _escHandler);
+        _escHandler = null;
+      }
     }
+    // Button always stays visible — never hide the toggle host
   }
 
   // ─── Status helpers ───────────────────────────────────────────
@@ -1521,6 +1796,13 @@
           analysis: currentAnalysis
         }
       });
+      // Update button to "Saved" state
+      const saveBtn = shadowRoot.getElementById('jmSaveJob');
+      if (saveBtn) {
+        saveBtn.textContent = 'Saved';
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.7';
+      }
       setStatus('Job saved to tracker!', 'success');
       setTimeout(clearStatus, 2000);
     } catch (err) {
