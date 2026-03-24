@@ -119,6 +119,75 @@
     await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: cache });
   }
 
+  // ─── Theme management ────────────────────────────────────────────
+  // Themes: 'blue' (default), 'dark', 'warm'
+
+  const THEME_ORDER = ['blue', 'dark', 'warm'];
+  const THEME_FAB_COLORS = {
+    blue: { bg: '#3b82f6', shadow: 'rgba(59,130,246,0.4)' },
+    dark: { bg: '#1e3a5f', shadow: 'rgba(30,58,95,0.4)' },
+    warm: { bg: '#d97706', shadow: 'rgba(217,119,6,0.4)' }
+  };
+  // Next theme's primary color shown inside the toggle button
+  const THEME_NEXT_INDICATOR = { blue: '#1e3a5f', dark: '#d97706', warm: '#3b82f6' };
+  let _currentTheme = 'blue';
+
+  /**
+   * Applies the given theme to the panel and FAB toggle button.
+   * @param {string} theme - 'blue', 'dark', or 'warm'
+   */
+  function applyTheme(theme) {
+    _currentTheme = theme;
+    const panel = shadowRoot && shadowRoot.getElementById('jm-panel');
+    if (panel) {
+      panel.classList.remove('theme-dark', 'theme-warm');
+      if (theme === 'dark') panel.classList.add('theme-dark');
+      if (theme === 'warm') panel.classList.add('theme-warm');
+    }
+    // Update FAB toggle button colors
+    if (toggleBtnRef) {
+      const colors = THEME_FAB_COLORS[theme] || THEME_FAB_COLORS.blue;
+      toggleBtnRef.style.background = colors.bg;
+      toggleBtnRef.style.boxShadow = `0 4px 12px ${colors.shadow}`;
+    }
+    // Update the theme toggle button indicator
+    if (shadowRoot) {
+      const themeBtn = shadowRoot.getElementById('jmThemeToggle');
+      if (themeBtn) {
+        const nextIdx = (THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length;
+        const nextColor = THEME_FAB_COLORS[THEME_ORDER[nextIdx]].bg;
+        themeBtn.style.borderColor = nextColor;
+        themeBtn.title = `Switch to ${THEME_ORDER[nextIdx] === 'blue' ? 'Ocean Blue' : THEME_ORDER[nextIdx] === 'dark' ? 'Dark Mode' : 'Warm Amber'}`;
+      }
+    }
+  }
+
+  /**
+   * Cycles to the next theme, saves it, and applies it.
+   */
+  async function cycleTheme() {
+    const idx = THEME_ORDER.indexOf(_currentTheme);
+    const nextTheme = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+    _currentTheme = nextTheme;
+    try {
+      await chrome.storage.local.set({ jm_theme: nextTheme });
+    } catch (e) { /* ignore */ }
+    applyTheme(nextTheme);
+  }
+
+  /**
+   * Loads the saved theme from storage and applies it.
+   */
+  async function loadTheme() {
+    try {
+      const result = await chrome.storage.local.get('jm_theme');
+      const theme = result.jm_theme || 'blue';
+      if (THEME_ORDER.includes(theme)) {
+        applyTheme(theme);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   // ─── Shadow DOM panel creation ──────────────────────────────────
   // The panel lives entirely inside a closed Shadow DOM so that:
   //   • The host page's CSS cannot override the panel's styles.
@@ -149,6 +218,9 @@
     // Wire up event listeners inside shadow DOM
     wireEvents(panel);
 
+    // Load and apply saved theme
+    loadTheme();
+
     return host;
   }
 
@@ -162,19 +234,74 @@
     return `
       * { margin: 0; padding: 0; box-sizing: border-box; }
 
+      /* ── Theme CSS Variables ── */
+      #jm-panel {
+        --jm-primary: #3b82f6;
+        --jm-primary-hover: #2563eb;
+        --jm-bg: #ffffff;
+        --jm-card-bg: #f8fafc;
+        --jm-border: #e2e8f0;
+        --jm-text: #1e293b;
+        --jm-text-secondary: #64748b;
+        --jm-text-muted: #94a3b8;
+        --jm-tag-bg: #dbeafe;
+        --jm-tag-text: #1e40af;
+        --jm-hover-bg: #eff6ff;
+        --jm-input-bg: #f8fafc;
+        --jm-shadow: rgba(59,130,246,0.15);
+        --jm-nav-inactive-bg: #f1f5f9;
+        --jm-nav-inactive-text: #64748b;
+      }
+
+      #jm-panel.theme-dark {
+        --jm-primary: #3b82f6;
+        --jm-primary-hover: #2563eb;
+        --jm-bg: #1e293b;
+        --jm-card-bg: #0f172a;
+        --jm-border: #334155;
+        --jm-text: #f1f5f9;
+        --jm-text-secondary: #cbd5e1;
+        --jm-text-muted: #94a3b8;
+        --jm-tag-bg: #1e3a5f;
+        --jm-tag-text: #93c5fd;
+        --jm-hover-bg: #334155;
+        --jm-input-bg: #0f172a;
+        --jm-shadow: rgba(0,0,0,0.3);
+        --jm-nav-inactive-bg: #334155;
+        --jm-nav-inactive-text: #94a3b8;
+      }
+
+      #jm-panel.theme-warm {
+        --jm-primary: #d97706;
+        --jm-primary-hover: #b45309;
+        --jm-bg: #fffbf5;
+        --jm-card-bg: #fefce8;
+        --jm-border: #fde68a;
+        --jm-text: #451a03;
+        --jm-text-secondary: #92400e;
+        --jm-text-muted: #a16207;
+        --jm-tag-bg: #fef3c7;
+        --jm-tag-text: #92400e;
+        --jm-hover-bg: #fef9c3;
+        --jm-input-bg: #fefce8;
+        --jm-shadow: rgba(217,119,6,0.15);
+        --jm-nav-inactive-bg: #fef3c7;
+        --jm-nav-inactive-text: #92400e;
+      }
+
       #jm-panel {
         position: fixed;
         top: 0;
         right: 0;
         width: 380px;
         height: 100vh;
-        background: #f8f9fb;
+        background: var(--jm-bg);
         box-shadow: none;
         display: flex;
         flex-direction: column;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 14px;
-        color: #1a1a2e;
+        color: var(--jm-text);
         overflow: hidden;
         transform: translateX(100%);
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -188,7 +315,7 @@
       }
 
       .jm-header {
-        background: #3b82f6;
+        background: var(--jm-primary);
         color: white;
         padding: 16px 20px;
         display: flex;
@@ -196,8 +323,31 @@
         align-items: center;
         flex-shrink: 0;
       }
+      #jm-panel.theme-dark .jm-header { background: #1e3a5f !important; }
+      #jm-panel.theme-warm .jm-header { background: #d97706 !important; }
 
       .jm-header h2 { font-size: 16px; font-weight: 600; }
+
+      /* Theme toggle button */
+      .jm-theme-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.4);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+        font-size: 14px;
+        transition: background 0.15s;
+        flex-shrink: 0;
+        padding: 0;
+      }
+      .jm-theme-btn:hover {
+        background: rgba(255,255,255,0.3);
+      }
       .jm-header .jm-subtitle { font-size: 11px; opacity: 0.8; }
 
       .jm-close {
@@ -218,8 +368,8 @@
 
       .jm-nav {
         display: flex;
-        background: white;
-        border-bottom: 1px solid #e2e8f0;
+        background: var(--jm-bg);
+        border-bottom: 1px solid var(--jm-border);
         flex-shrink: 0;
       }
 
@@ -230,7 +380,7 @@
         background: none;
         font-size: 12px;
         font-weight: 500;
-        color: #64748b;
+        color: var(--jm-nav-inactive-text);
         cursor: pointer;
         transition: color 0.2s, background 0.2s;
         font-family: inherit;
@@ -238,13 +388,13 @@
       }
 
       .jm-nav-btn:hover {
-        color: #3b82f6;
-        background: #eff6ff;
+        color: var(--jm-primary);
+        background: var(--jm-hover-bg);
       }
 
       .jm-nav-btn.active {
-        color: #3b82f6;
-        border-bottom: 2px solid #3b82f6;
+        color: var(--jm-primary);
+        border-bottom: 2px solid var(--jm-primary);
         font-weight: 600;
       }
 
@@ -277,16 +427,16 @@
       }
 
       .jm-btn-primary {
-        background: #3b82f6;
+        background: var(--jm-primary);
         color: white;
       }
-      .jm-btn-primary:hover { background: #2563eb; }
+      .jm-btn-primary:hover { background: var(--jm-primary-hover); }
 
       .jm-btn-secondary {
-        background: #e2e8f0;
-        color: #475569;
+        background: var(--jm-border);
+        color: var(--jm-text-secondary);
       }
-      .jm-btn-secondary:hover { background: #cbd5e1; }
+      .jm-btn-secondary:hover { background: var(--jm-hover-bg); }
 
       .jm-btn-success {
         background: #d1fae5;
@@ -295,10 +445,10 @@
       .jm-btn-success:hover { background: #a7f3d0; }
 
       .jm-btn-applied {
-        background: #3b82f6;
+        background: var(--jm-primary);
         color: white;
       }
-      .jm-btn-applied:hover { background: #2563eb; }
+      .jm-btn-applied:hover { background: var(--jm-primary-hover); }
 
       .jm-btn-applied-done {
         background: #93c5fd;
@@ -319,7 +469,7 @@
         margin-bottom: 16px;
         display: none;
       }
-      .jm-status.info { display: block; background: #dbeafe; color: #1e40af; }
+      .jm-status.info { display: block; background: var(--jm-tag-bg); color: var(--jm-tag-text); }
       .jm-status.error { display: block; background: #fee2e2; color: #dc2626; }
       .jm-status.success { display: block; background: #d1fae5; color: #059669; }
 
@@ -355,7 +505,7 @@
         margin-bottom: 8px;
       }
 
-      .jm-score-label { font-size: 13px; color: #64748b; }
+      .jm-score-label { font-size: 13px; color: var(--jm-text-secondary); }
 
       .score-green { background: linear-gradient(135deg, #10b981, #059669); }
       .score-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
@@ -370,7 +520,7 @@
       .jm-section h3 {
         font-size: 13px;
         font-weight: 600;
-        color: #475569;
+        color: var(--jm-text-secondary);
         margin-bottom: 8px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -391,7 +541,7 @@
 
       .jm-tag-match { background: #d1fae5; color: #059669; }
       .jm-tag-missing { background: #fee2e2; color: #dc2626; }
-      .jm-tag-keyword { background: #dbeafe; color: #1e40af; }
+      .jm-tag-keyword { background: var(--jm-tag-bg); color: var(--jm-tag-text); }
 
       /* Recommendations */
       .jm-recs {
@@ -401,61 +551,61 @@
 
       .jm-recs li {
         padding: 8px 0;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid var(--jm-border);
         font-size: 13px;
         line-height: 1.5;
-        color: #334155;
+        color: var(--jm-text);
       }
       .jm-recs li:last-child { border-bottom: none; }
 
       .jm-recs li::before {
         content: '\\2192 ';
-        color: #3b82f6;
+        color: var(--jm-primary);
         font-weight: 600;
       }
 
       /* Insights */
       .jm-insight-block {
-        background: white;
+        background: var(--jm-card-bg);
         border-radius: 8px;
         padding: 12px;
         margin-bottom: 8px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--jm-border);
       }
 
       .jm-insight-block h4 {
         font-size: 12px;
         font-weight: 600;
-        color: #3b82f6;
+        color: var(--jm-primary);
         margin-bottom: 4px;
         text-transform: uppercase;
       }
 
       .jm-insight-block p {
         font-size: 13px;
-        color: #475569;
+        color: var(--jm-text-secondary);
         line-height: 1.5;
       }
 
       /* Job info */
       .jm-job-info {
-        background: white;
+        background: var(--jm-card-bg);
         border-radius: 8px;
         padding: 12px;
         margin-bottom: 16px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--jm-border);
         display: none;
       }
 
       .jm-job-info .jm-job-title {
         font-weight: 600;
         font-size: 14px;
-        color: #1e293b;
+        color: var(--jm-text);
       }
 
       .jm-job-info .jm-job-company {
         font-size: 13px;
-        color: #64748b;
+        color: var(--jm-text-secondary);
       }
 
       .jm-job-meta {
@@ -467,7 +617,7 @@
 
       .jm-job-meta span {
         font-size: 12px;
-        color: #64748b;
+        color: var(--jm-text-secondary);
         display: inline-flex;
         align-items: center;
         gap: 4px;
@@ -490,11 +640,11 @@
         width: 48px;
         height: 48px;
         border-radius: 50%;
-        background: #3b82f6;
+        background: var(--jm-fab-bg, #3b82f6);
         color: white;
         border: none;
         cursor: grab;
-        box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+        box-shadow: 0 4px 12px var(--jm-fab-shadow, rgba(59,130,246,0.4));
         font-size: 20px;
         display: flex;
         align-items: center;
@@ -506,22 +656,22 @@
       }
       .jm-toggle:hover {
         transform: scale(1.1);
-        box-shadow: 0 6px 16px rgba(59,130,246,0.5);
+        box-shadow: 0 6px 16px var(--jm-fab-shadow, rgba(59,130,246,0.5));
       }
       .jm-toggle.dragging {
         cursor: grabbing;
         transform: scale(1.1);
-        box-shadow: 0 8px 20px rgba(59,130,246,0.6);
+        box-shadow: 0 8px 20px var(--jm-fab-shadow, rgba(59,130,246,0.6));
         transition: none;
       }
 
       /* Outline button */
       .jm-btn-outline {
-        background: white;
-        border: 1.5px solid #3b82f6;
-        color: #3b82f6;
+        background: var(--jm-bg);
+        border: 1.5px solid var(--jm-primary);
+        color: var(--jm-primary);
       }
-      .jm-btn-outline:hover { background: #eff6ff; }
+      .jm-btn-outline:hover { background: var(--jm-hover-bg); }
 
       /* Truncation notice */
       .jm-trunc-notice {
@@ -549,34 +699,34 @@
         align-items: flex-start;
         gap: 8px;
         padding: 7px 8px;
-        background: white;
+        background: var(--jm-card-bg);
         border-radius: 6px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--jm-border);
         font-size: 12px;
         line-height: 1.4;
       }
       .jm-preview-row input[type="checkbox"] {
         margin-top: 2px;
         flex-shrink: 0;
-        accent-color: #3b82f6;
+        accent-color: var(--jm-primary);
         width: 14px;
         height: 14px;
       }
-      .jm-preview-label { font-weight: 600; color: #334155; }
-      .jm-preview-val { color: #64748b; word-break: break-word; }
+      .jm-preview-label { font-weight: 600; color: var(--jm-text); }
+      .jm-preview-val { color: var(--jm-text-secondary); word-break: break-word; }
       .jm-preview-row.jm-needs-input { background: #fffbeb; border-color: #fde68a; }
       .jm-preview-row.jm-needs-input .jm-preview-val { color: #92400e; }
       .jm-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
 
       /* Cover letter */
       .jm-cover-letter {
-        background: white;
-        border: 1px solid #e2e8f0;
+        background: var(--jm-card-bg);
+        border: 1px solid var(--jm-border);
         border-radius: 8px;
         padding: 12px 14px;
         font-size: 12.5px;
         line-height: 1.7;
-        color: #334155;
+        color: var(--jm-text);
         white-space: pre-wrap;
         max-height: 260px;
         overflow-y: auto;
@@ -598,8 +748,8 @@
 
       /* Bullet rewriter */
       .jm-bullet-item {
-        background: white;
-        border: 1px solid #e2e8f0;
+        background: var(--jm-card-bg);
+        border: 1px solid var(--jm-border);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 8px;
@@ -609,19 +759,19 @@
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #3b82f6;
+        color: var(--jm-primary);
         margin-bottom: 6px;
       }
       .jm-bullet-before {
         font-size: 12px;
-        color: #94a3b8;
+        color: var(--jm-text-muted);
         text-decoration: line-through;
         margin-bottom: 4px;
         line-height: 1.5;
       }
       .jm-bullet-after {
         font-size: 12px;
-        color: #1e293b;
+        color: var(--jm-text);
         margin-bottom: 7px;
         line-height: 1.5;
       }
@@ -629,14 +779,14 @@
 
       /* Job notes */
       .jm-notes-section {
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--jm-border);
         margin-top: 12px;
         padding-top: 12px;
       }
       .jm-notes-section h3 {
         font-size: 12px;
         font-weight: 600;
-        color: #94a3b8;
+        color: var(--jm-text-muted);
         text-transform: uppercase;
         letter-spacing: 0.5px;
         margin-bottom: 6px;
@@ -644,20 +794,20 @@
       .jm-notes-textarea {
         width: 100%;
         resize: vertical;
-        border: 1px solid #d1d5db;
+        border: 1px solid var(--jm-border);
         border-radius: 6px;
         padding: 8px 10px;
         font-size: 12.5px;
         font-family: inherit;
-        color: #334155;
-        background: white;
+        color: var(--jm-text);
+        background: var(--jm-input-bg);
         min-height: 62px;
         box-sizing: border-box;
       }
       .jm-notes-textarea:focus {
         outline: none;
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+        border-color: var(--jm-primary);
+        box-shadow: 0 0 0 2px var(--jm-shadow);
       }
 
       /* Resume slot switcher */
@@ -671,7 +821,7 @@
       .jm-switch-label {
         font-size: 11px;
         font-weight: 600;
-        color: #64748b;
+        color: var(--jm-text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.04em;
         white-space: nowrap;
@@ -685,9 +835,9 @@
         font-size: 11px;
         padding: 3px 10px;
         border-radius: 20px;
-        border: 1.5px solid #cbd5e1;
+        border: 1.5px solid var(--jm-border);
         background: transparent;
-        color: #475569;
+        color: var(--jm-text-secondary);
         cursor: pointer;
         transition: all 0.15s;
         white-space: nowrap;
@@ -696,11 +846,11 @@
         text-overflow: ellipsis;
       }
       .jm-switch-pill:hover:not(:disabled) {
-        border-color: #3b82f6;
-        color: #3b82f6;
+        border-color: var(--jm-primary);
+        color: var(--jm-primary);
       }
       .jm-switch-pill.active {
-        background: #3b82f6;
+        background: var(--jm-primary);
         border-color: transparent;
         color: white;
         font-weight: 600;
@@ -713,24 +863,24 @@
       /* Saved jobs tab */
       .jm-saved-list { display: flex; flex-direction: column; gap: 8px; }
       .jm-saved-card {
-        background: #f8fafc; border-radius: 8px; padding: 12px;
-        position: relative; border: 1px solid #e2e8f0;
+        background: var(--jm-card-bg); border-radius: 8px; padding: 12px;
+        position: relative; border: 1px solid var(--jm-border);
         transition: border-color 0.15s;
       }
-      .jm-saved-card:hover { border-color: #3b82f6; }
-      .jm-saved-title { font-weight: 600; font-size: 13px; color: #1e293b; text-decoration: none; display: block; margin-bottom: 4px; }
-      .jm-saved-title:hover { color: #3b82f6; }
-      .jm-saved-company { font-size: 12px; color: #64748b; }
-      .jm-saved-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #94a3b8; }
+      .jm-saved-card:hover { border-color: var(--jm-primary); }
+      .jm-saved-title { font-weight: 600; font-size: 13px; color: var(--jm-text); text-decoration: none; display: block; margin-bottom: 4px; }
+      .jm-saved-title:hover { color: var(--jm-primary); }
+      .jm-saved-company { font-size: 12px; color: var(--jm-text-secondary); }
+      .jm-saved-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--jm-text-muted); }
       .jm-saved-score { padding: 2px 8px; border-radius: 4px; color: #fff; font-weight: 600; font-size: 11px; }
       .jm-saved-delete {
         position: absolute; top: 8px; right: 8px;
         background: none; border: none; cursor: pointer;
-        color: #cbd5e1; font-size: 16px; line-height: 1;
+        color: var(--jm-text-muted); font-size: 16px; line-height: 1;
         transition: color 0.15s;
       }
       .jm-saved-delete:hover { color: #ef4444; }
-      .jm-saved-empty { text-align: center; color: #94a3b8; font-size: 13px; padding: 32px 16px; }
+      .jm-saved-empty { text-align: center; color: var(--jm-text-muted); font-size: 13px; padding: 32px 16px; }
 
       /* Tab content visibility */
       .jm-tab-content { display: none; }
@@ -755,6 +905,9 @@
         <div>
           <h2>JobMatch AI</h2>
           <div class="jm-subtitle">Resume & Job Analyzer</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="jm-theme-btn" id="jmThemeToggle" title="Switch theme">&#9680;</button>
         </div>
       </div>
       <div class="jm-nav">
@@ -839,7 +992,7 @@
 
         <!-- AutoFill preview -->
         <div class="jm-section" id="jmAutofillPreview" style="display:none">
-          <h3>Review Autofill <span id="jmPreviewCount" style="font-weight:400;color:#64748b;text-transform:none;letter-spacing:0"></span></h3>
+          <h3>Review Autofill <span id="jmPreviewCount" style="font-weight:400;color:var(--jm-text-secondary);text-transform:none;letter-spacing:0"></span></h3>
           <div class="jm-preview-list" id="jmPreviewList"></div>
           <div class="jm-preview-actions">
             <button class="jm-btn jm-btn-primary" id="jmApplyFill" style="flex:1">Apply Selected</button>
@@ -903,6 +1056,9 @@
     });
     panel.querySelector('#jmNotesInput').addEventListener('blur', saveJobNotes);
     panel.querySelector('#jmNotesInput').addEventListener('input', saveJobNotes);
+
+    // Theme toggle button
+    panel.querySelector('#jmThemeToggle').addEventListener('click', cycleTheme);
 
     // Nav buttons → open profile page at the right tab, or switch to Saved tab
     panel.querySelectorAll('.jm-nav-btn').forEach(btn => {
@@ -3320,7 +3476,7 @@
       });
 
       if (!Array.isArray(bullets) || bullets.length === 0) {
-        list.innerHTML = '<p style="font-size:12px;color:#64748b;">No bullet improvements generated. Your resume experience section may be empty or the AI could not suggest improvements.</p>';
+        list.innerHTML = '<p style="font-size:12px;color:var(--jm-text-secondary);">No bullet improvements generated. Your resume experience section may be empty or the AI could not suggest improvements.</p>';
       } else {
         bullets.forEach(b => {
           const item = document.createElement('div');

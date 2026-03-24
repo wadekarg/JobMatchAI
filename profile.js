@@ -1616,6 +1616,62 @@ function handleHash() {
   }
 }
 
+// ─── Theme management ─────────────────────────────────────────────────────────
+
+const THEME_ORDER_PROFILE = ['blue', 'dark', 'warm'];
+const THEME_HEADER_COLORS = { blue: '#3b82f6', dark: '#1e3a5f', warm: '#d97706' };
+
+/**
+ * Applies the given theme to the profile page body.
+ * @param {string} theme - 'blue', 'dark', or 'warm'
+ */
+function applyProfileTheme(theme) {
+  document.body.classList.remove('theme-dark', 'theme-warm');
+  if (theme === 'dark') document.body.classList.add('theme-dark');
+  if (theme === 'warm') document.body.classList.add('theme-warm');
+  // Update the theme button indicator
+  const btn = document.getElementById('profileThemeToggle');
+  if (btn) {
+    const nextIdx = (THEME_ORDER_PROFILE.indexOf(theme) + 1) % THEME_ORDER_PROFILE.length;
+    const nextTheme = THEME_ORDER_PROFILE[nextIdx];
+    const nextColor = THEME_HEADER_COLORS[nextTheme];
+    btn.style.borderColor = nextColor;
+    btn.title = `Switch to ${nextTheme === 'blue' ? 'Ocean Blue' : nextTheme === 'dark' ? 'Dark Mode' : 'Warm Amber'}`;
+  }
+}
+
+/**
+ * Loads the saved theme from storage and applies it to the profile page.
+ */
+async function loadProfileTheme() {
+  try {
+    const result = await chrome.storage.local.get('jm_theme');
+    const theme = result.jm_theme || 'blue';
+    if (THEME_ORDER_PROFILE.includes(theme)) {
+      applyProfileTheme(theme);
+    }
+  } catch (e) { /* ignore */ }
+}
+
+/**
+ * Cycles to the next theme, saves it, and applies it.
+ */
+let _profileCurrentTheme = 'blue';
+document.getElementById('profileThemeToggle').addEventListener('click', async () => {
+  const result = await chrome.storage.local.get('jm_theme');
+  _profileCurrentTheme = result.jm_theme || 'blue';
+  const idx = THEME_ORDER_PROFILE.indexOf(_profileCurrentTheme);
+  const nextTheme = THEME_ORDER_PROFILE[(idx + 1) % THEME_ORDER_PROFILE.length];
+  _profileCurrentTheme = nextTheme;
+  try {
+    await chrome.storage.local.set({ jm_theme: nextTheme });
+  } catch (e) { /* ignore */ }
+  applyProfileTheme(nextTheme);
+});
+
+// Load theme immediately on page load
+loadProfileTheme();
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 // Kick off data loading and form population
