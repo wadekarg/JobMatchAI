@@ -105,21 +105,35 @@ document.getElementById('togglePanelBtn').addEventListener('click', async () => 
     // Fallback path: content script is not yet running in this tab.
     // Inject the script and stylesheet, then retry the toggle after a short
     // delay to give the content script time to attach its message listener.
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      // Inject the content script JS
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content.js']
-      });
-      // Inject the companion stylesheet (panel UI styles)
-      await chrome.scripting.insertCSS({
-        target: { tabId: tab.id },
-        files: ['styles.css']
-      });
-      // Wait 200 ms for the content script to register its message listener,
-      // then send the toggle command
-      setTimeout(() => sendToTab({ type: 'TOGGLE_PANEL' }), 200);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        // Inject the content script JS
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        // Inject the companion stylesheet (panel UI styles)
+        await chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          files: ['styles.css']
+        });
+        // Wait 200 ms for the content script to register its message listener,
+        // then send the toggle command
+        setTimeout(() => sendToTab({ type: 'TOGGLE_PANEL' }), 200);
+      } else {
+        const dot  = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        dot.classList.remove('connected');
+        text.textContent = 'Could not connect to this page';
+        return; // Don't close popup so user can see the error
+      }
+    } catch (injectionErr) {
+      const dot  = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      dot.classList.remove('connected');
+      text.textContent = 'Could not connect to this page';
+      return; // Don't close popup so user can see the error
     }
   }
   // Close the popup regardless of success/failure — keeps the UX clean

@@ -83,10 +83,20 @@
    * @param {string} url - The full URL of the job posting page.
    * @returns {Promise<Object|null>} Cached result or null if not found.
    */
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24-hour TTL for cache entries
+
   async function getCachedAnalysis(url) {
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
-    return cache[url] || null;
+    const entry = cache[url];
+    if (!entry) return null;
+    // Expire entries older than 24 hours
+    if (entry.timestamp && Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      delete cache[url];
+      await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: cache });
+      return null;
+    }
+    return entry;
   }
 
   /**
@@ -99,7 +109,7 @@
   async function setCachedAnalysis(url, data) {
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
-    cache[url] = data;
+    cache[url] = { ...data, timestamp: Date.now() };
     // Evict oldest entries (Object.keys preserves insertion order in V8)
     const keys = Object.keys(cache);
     if (keys.length > MAX_CACHE_ENTRIES) {
@@ -172,7 +182,7 @@
       #jm-panel.open { transform: translateX(0); }
 
       .jm-header {
-        background: linear-gradient(135deg, #667eea, #764ba2);
+        background: #3b82f6;
         color: white;
         padding: 16px 20px;
         display: flex;
@@ -222,8 +232,8 @@
       }
 
       .jm-nav-btn:hover {
-        color: #667eea;
-        background: #f0f2ff;
+        color: #3b82f6;
+        background: #eff6ff;
       }
 
       .jm-body {
@@ -255,10 +265,10 @@
       }
 
       .jm-btn-primary {
-        background: #667eea;
+        background: #3b82f6;
         color: white;
       }
-      .jm-btn-primary:hover { background: #5a6fd6; }
+      .jm-btn-primary:hover { background: #2563eb; }
 
       .jm-btn-secondary {
         background: #e2e8f0;
@@ -273,13 +283,13 @@
       .jm-btn-success:hover { background: #a7f3d0; }
 
       .jm-btn-applied {
-        background: #7c3aed;
+        background: #3b82f6;
         color: white;
       }
-      .jm-btn-applied:hover { background: #6d28d9; }
+      .jm-btn-applied:hover { background: #2563eb; }
 
       .jm-btn-applied-done {
-        background: #d8b4fe;
+        background: #93c5fd;
         color: #581c87;
         cursor: default;
       }
@@ -297,7 +307,7 @@
         margin-bottom: 16px;
         display: none;
       }
-      .jm-status.info { display: block; background: #e0e7ff; color: #4338ca; }
+      .jm-status.info { display: block; background: #dbeafe; color: #1e40af; }
       .jm-status.error { display: block; background: #fee2e2; color: #dc2626; }
       .jm-status.success { display: block; background: #d1fae5; color: #059669; }
 
@@ -369,7 +379,7 @@
 
       .jm-tag-match { background: #d1fae5; color: #059669; }
       .jm-tag-missing { background: #fee2e2; color: #dc2626; }
-      .jm-tag-keyword { background: #e0e7ff; color: #4338ca; }
+      .jm-tag-keyword { background: #dbeafe; color: #1e40af; }
 
       /* Recommendations */
       .jm-recs {
@@ -388,7 +398,7 @@
 
       .jm-recs li::before {
         content: '\\2192 ';
-        color: #667eea;
+        color: #3b82f6;
         font-weight: 600;
       }
 
@@ -404,7 +414,7 @@
       .jm-insight-block h4 {
         font-size: 12px;
         font-weight: 600;
-        color: #667eea;
+        color: #3b82f6;
         margin-bottom: 4px;
         text-transform: uppercase;
       }
@@ -457,11 +467,11 @@
         width: 48px;
         height: 48px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #667eea, #764ba2);
+        background: #3b82f6;
         color: white;
         border: none;
         cursor: grab;
-        box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+        box-shadow: 0 4px 12px rgba(59,130,246,0.4);
         font-size: 20px;
         display: flex;
         align-items: center;
@@ -473,22 +483,22 @@
       }
       .jm-toggle:hover {
         transform: scale(1.1);
-        box-shadow: 0 6px 16px rgba(102,126,234,0.5);
+        box-shadow: 0 6px 16px rgba(59,130,246,0.5);
       }
       .jm-toggle.dragging {
         cursor: grabbing;
         transform: scale(1.1);
-        box-shadow: 0 8px 20px rgba(102,126,234,0.6);
+        box-shadow: 0 8px 20px rgba(59,130,246,0.6);
         transition: none;
       }
 
       /* Outline button */
       .jm-btn-outline {
         background: white;
-        border: 1.5px solid #667eea;
-        color: #667eea;
+        border: 1.5px solid #3b82f6;
+        color: #3b82f6;
       }
-      .jm-btn-outline:hover { background: #f0f2ff; }
+      .jm-btn-outline:hover { background: #eff6ff; }
 
       /* Truncation notice */
       .jm-trunc-notice {
@@ -525,7 +535,7 @@
       .jm-preview-row input[type="checkbox"] {
         margin-top: 2px;
         flex-shrink: 0;
-        accent-color: #667eea;
+        accent-color: #3b82f6;
         width: 14px;
         height: 14px;
       }
@@ -576,7 +586,7 @@
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #667eea;
+        color: #3b82f6;
         margin-bottom: 6px;
       }
       .jm-bullet-before {
@@ -623,8 +633,8 @@
       }
       .jm-notes-textarea:focus {
         outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
       }
 
       /* Resume slot switcher */
@@ -663,11 +673,11 @@
         text-overflow: ellipsis;
       }
       .jm-switch-pill:hover:not(:disabled) {
-        border-color: #667eea;
-        color: #667eea;
+        border-color: #3b82f6;
+        color: #3b82f6;
       }
       .jm-switch-pill.active {
-        background: linear-gradient(135deg, #667eea, #764ba2);
+        background: #3b82f6;
         border-color: transparent;
         color: white;
         font-weight: 600;
@@ -759,6 +769,9 @@
         <!-- Truncation notice -->
         <div class="jm-trunc-notice" id="jmTruncNotice">
           &#9888; Job description was too long and was trimmed — match score may be approximate.
+        </div>
+        <div class="jm-trunc-notice" id="jmResumeTruncNotice">
+          &#9888; Note: Your resume was truncated for analysis. Consider shortening it for better results.
         </div>
 
         <!-- AutoFill preview -->
@@ -1322,8 +1335,9 @@
       renderAnalysis(response);
       clearStatus();
 
-      // Show truncation notice if JD was trimmed
+      // Show truncation notices if text was trimmed
       shadowRoot.getElementById('jmTruncNotice').style.display = response.jdTruncated ? 'block' : 'none';
+      shadowRoot.getElementById('jmResumeTruncNotice').style.display = response.truncated ? 'block' : 'none';
 
       // Show save, applied, cover letter, bullet rewriter buttons
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
@@ -1705,9 +1719,9 @@
         position: fixed;
         z-index: 2147483640;
         background: #fff;
-        border: 1.5px solid #667eea;
+        border: 1.5px solid #3b82f6;
         border-radius: 10px;
-        box-shadow: 0 3px 14px rgba(102,126,234,0.22);
+        box-shadow: 0 3px 14px rgba(59,130,246,0.22);
         display: flex;
         align-items: center;
         gap: 5px;
@@ -1724,7 +1738,7 @@
         border-color: #f59e0b;
         background: #fffbeb;
       }
-      .jmai-chip-icon { font-size: 12px; flex-shrink: 0; color: #667eea; }
+      .jmai-chip-icon { font-size: 12px; flex-shrink: 0; color: #3b82f6; }
       .jmai-chip.jmai-needs-input .jmai-chip-icon { color: #f59e0b; }
       .jmai-chip-answer {
         flex: 1;
@@ -1740,8 +1754,8 @@
       }
       .jmai-chip-answer:focus {
         outline: none;
-        border-color: #667eea;
-        background: #f8f9ff;
+        border-color: #3b82f6;
+        background: #eff6ff;
         white-space: normal;
         overflow: visible;
       }
@@ -1777,7 +1791,7 @@
         position: fixed;
         bottom: 0; left: 0; right: 0;
         z-index: 2147483641;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #3b82f6;
         color: #fff;
         padding: 10px 20px;
         display: flex;
@@ -1785,13 +1799,13 @@
         gap: 10px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         font-size: 13px;
-        box-shadow: 0 -3px 20px rgba(102,126,234,0.3);
+        box-shadow: 0 -3px 20px rgba(59,130,246,0.3);
       }
       .jmai-bar-logo { font-size: 16px; }
       .jmai-bar-text { flex: 1; font-weight: 500; }
       .jmai-bar-apply {
         background: #fff;
-        color: #667eea;
+        color: #3b82f6;
         border: none;
         border-radius: 7px;
         padding: 6px 18px;
@@ -1800,7 +1814,7 @@
         cursor: pointer;
         transition: background 0.15s;
       }
-      .jmai-bar-apply:hover { background: #eef2ff; }
+      .jmai-bar-apply:hover { background: #eff6ff; }
       .jmai-bar-dismiss {
         background: rgba(255,255,255,0.18);
         color: #fff;
@@ -1812,7 +1826,7 @@
       }
       .jmai-bar-dismiss:hover { background: rgba(255,255,255,0.28); }
       .jmai-field-ring {
-        outline: 2.5px solid #667eea !important;
+        outline: 2.5px solid #3b82f6 !important;
         outline-offset: 2px !important;
       }
       .jmai-badge {
@@ -2938,7 +2952,7 @@
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
       const jd = extractJobDescription();
-      const text = await sendMessage({
+      const clResult = await sendMessage({
         type: 'GENERATE_COVER_LETTER',
         jobDescription: jd,
         analysis: {
@@ -2946,6 +2960,9 @@
           matchScore: currentAnalysis.matchScore
         }
       });
+      // Support both old string and new object response format
+      const text = typeof clResult === 'string' ? clResult : clResult.text;
+      const clTruncated = typeof clResult === 'object' && clResult.truncated;
       shadowRoot.getElementById('jmCoverLetterText').textContent = text;
       const section = shadowRoot.getElementById('jmCoverLetterSection');
       section.style.display = 'block';
@@ -3159,7 +3176,7 @@
       if (autofillBtn) { autofillBtn.innerHTML = 'AutoFill Application'; autofillBtn.onclick = null; }
       [
         'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
-        'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice',
+        'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
         'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
         'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
       ].forEach(id => {

@@ -600,6 +600,10 @@ function renderQA() {
   const list = document.getElementById('qaList');
   list.innerHTML = '';
 
+  // Show current count near the Q&A section header
+  const countEl = document.getElementById('qaCount');
+  if (countEl) countEl.textContent = `${qaList.length} / 200`;
+
   // Only show the category filter toolbar if at least one entry has a category
   const hasCategorized = qaList.some(q => q.category);
   const filterEl = document.getElementById('qaCategoryFilter');
@@ -880,6 +884,10 @@ document.querySelectorAll('.qa-filter-btn').forEach(btn => {
  * Appends a blank custom entry (category = 'custom') to the list and re-renders.
  */
 document.getElementById('addQABtn').addEventListener('click', () => {
+  if (qaList.length >= 200) {
+    showToast('Q&A list is limited to 200 entries. Please remove some before adding new ones.');
+    return;
+  }
   qaList.push({ question: '', answer: '', category: 'custom' });
   renderQA();
 });

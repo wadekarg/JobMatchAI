@@ -245,6 +245,7 @@ async function handleAnalyzeJob(jobDescription, jobTitle, company) {
   const parsed = parseJSONResponse(result);
   // Annotate the result so the UI can inform the user that analysis was partial
   if (jobDescription.length > maxLen) parsed.jdTruncated = true;
+  if (jobDescription.length > maxLen) parsed.truncated = true;
   return parsed;
 }
 
@@ -493,11 +494,14 @@ async function handleGenerateCoverLetter(jobDescription, analysis) {
 
   const messages = buildCoverLetterPrompt(profile, truncatedJD, analysis);
   // Return the raw AI string — cover letters are prose, not JSON
-  return await callAI(settings.provider, settings.apiKey, messages, {
+  const text = await callAI(settings.provider, settings.apiKey, messages, {
     model: settings.model,
     temperature: 0.4, // Moderate creativity: varied sentences without hallucinated facts
     maxTokens: 700    // ~500 words — a standard single-page cover letter length
   });
+  const result = { text };
+  if (jobDescription.length > maxLen) result.truncated = true;
+  return result;
 }
 
 /**
@@ -667,6 +671,10 @@ async function handleMessage(message, sender) {
       return getSettings();
 
     case 'SAVE_QA_LIST':
+      // Enforce a cap of 200 Q&A entries
+      if (message.qaList && message.qaList.length > 200) {
+        throw new Error('Q&A list is limited to 200 entries. Please remove some before adding new ones.');
+      }
       // Persist the user's custom Q&A pairs used to supplement autofill
       await chrome.storage.local.set({ qaList: message.qaList });
       return { success: true };

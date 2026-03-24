@@ -342,11 +342,36 @@ async function callAI(provider, apiKey, messages, options = {}) {
       lastError = e;
       // Only retry on rate-limit errors (429); surface all other errors immediately.
       if (e.status === 429) continue; // retry rate limits
-      throw e;
+      throw wrapAIError(e);
     }
   }
-  // All retry attempts exhausted — re-throw the last captured error.
-  throw lastError;
+  // All retry attempts exhausted (429 after all retries) — wrap with user-friendly message.
+  throw wrapAIError(lastError);
+}
+
+/**
+ * Wraps raw API/network errors into user-friendly messages.
+ * @param {Error} e - The original error from dispatchCall or fetch.
+ * @returns {Error} A new Error with a clean, user-facing message.
+ */
+function wrapAIError(e) {
+  // Network errors (fetch itself failed — no HTTP status)
+  if (!e.status && (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError') || e.name === 'TypeError')) {
+    return new Error('Could not connect to AI provider. Please check your internet connection.');
+  }
+  // HTTP status-based messages
+  if (e.status === 401 || e.status === 403) {
+    return new Error('Invalid API key. Please check your API key in settings.');
+  }
+  if (e.status === 429) {
+    return new Error('Rate limit exceeded. Please wait a moment and try again.');
+  }
+  if (e.status === 500 || e.status === 502 || e.status === 503) {
+    return new Error('AI provider is temporarily unavailable. Please try again later.');
+  }
+  // Fallback for any other error
+  const brief = e.message ? e.message.substring(0, 200) : 'Unknown error';
+  return new Error(`AI request failed: ${brief}`);
 }
 
 // ─── callAI dispatcher ───────────────────────────────────────────────
