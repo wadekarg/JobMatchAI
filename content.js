@@ -640,15 +640,15 @@
       /* Toggle button (outside panel) */
       .jm-toggle {
         position: fixed;
-        width: 56px;
-        height: 56px;
+        width: 42px;
+        height: 42px;
         border-radius: 50%;
         background: var(--jm-fab-bg, #3b82f6);
         color: white;
         border: none;
         cursor: grab;
         box-shadow: 0 4px 12px var(--jm-fab-shadow, rgba(59,130,246,0.4));
-        font-size: 40px;
+        font-size: 30px;
         display: flex;
         align-items: center;
         justify-content: center;
