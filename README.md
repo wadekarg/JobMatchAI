@@ -2,6 +2,8 @@
 
 **Smart Chrome Extension for Job Seekers** — Analyze job postings against your resume using AI, get match scores, auto-fill applications, generate cover letters, rewrite resume bullets, and track every job you apply to.
 
+[![Install from Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Free-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/jobmatch-ai-%E2%80%93-smart-resum/pfdlaofmcbmjnljfiembdcadcjjnlcia?hl=en-US)
+
 ![Chrome](https://img.shields.io/badge/Chrome-MV3-brightgreen?logo=googlechrome&logoColor=white)
 ![AI Powered](https://img.shields.io/badge/AI-Powered-blueviolet)
 ![License](https://img.shields.io/badge/License-MIT-blue)
