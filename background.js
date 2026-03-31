@@ -824,6 +824,13 @@ const handlers = {
 
   'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.rewrittenBullets, msg.missingSkills),
 
+  'INCREMENT_RESUME_COUNTER': async () => {
+    const { tailoredResumeCounter = 0 } = await chrome.storage.local.get('tailoredResumeCounter');
+    const next = tailoredResumeCounter + 1;
+    await chrome.storage.local.set({ tailoredResumeCounter: next });
+    return next;
+  },
+
   'SAVE_RAW_RESUME': async (msg) => {
     await chrome.storage.local.set({ rawResumeBase64: msg.rawResumeBase64, resumeFileType: msg.fileType });
     return { success: true };

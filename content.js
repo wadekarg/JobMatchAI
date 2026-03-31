@@ -3624,12 +3624,16 @@
         missingSkills: currentAnalysis.missingSkills || []
       });
 
-      // Build filename: {originalName}_{company}.docx
-      const company = (currentAnalysis.company || '').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      // Build filename: {originalName}_{company or autoId}.docx
+      const company = (currentAnalysis.company || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
       const baseName = (result.originalFileName || 'resume').replace(/\.docx$/i, '');
-      const downloadName = company
-        ? `${baseName}_${company}.docx`
-        : `${baseName}_tailored_${Date.now()}.docx`;
+      let downloadName;
+      if (company) {
+        downloadName = `${baseName}_${company}.docx`;
+      } else {
+        const counter = await sendMessage({ type: 'INCREMENT_RESUME_COUNTER' });
+        downloadName = `${baseName}_${counter}.docx`;
+      }
 
       // Convert base64 to blob and trigger download
       const binaryString = atob(result.base64);
