@@ -779,6 +779,10 @@
         line-height: 1.5;
       }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
+      .jm-bullet-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+      .jm-bullet-toggle { width: 14px; height: 14px; accent-color: var(--jm-primary); cursor: pointer; flex-shrink: 0; }
+      .jm-bullet-item.jm-excluded { opacity: 0.45; }
+      .jm-bullet-item.jm-excluded .jm-bullet-after { text-decoration: line-through; }
 
       /* Job notes */
       .jm-notes-section {
@@ -3499,10 +3503,16 @@
           const item = document.createElement('div');
           item.className = 'jm-bullet-item';
           item.innerHTML = `
-            <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
+            <div class="jm-bullet-header">
+              <input type="checkbox" class="jm-bullet-toggle" checked title="Include this improvement in tailored resume">
+              <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
+            </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
             <div class="jm-bullet-after">${escapeHTML(b.improved || '')}</div>
             <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>`;
+          item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
+            item.classList.toggle('jm-excluded', !e.target.checked);
+          });
           item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
             navigator.clipboard.writeText(b.improved || '').then(() => {
               const cb = item.querySelector('.jm-bullet-copy');
@@ -3542,10 +3552,12 @@
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
 
-      // Collect rewritten bullets from the UI
+      // Collect only CHECKED rewritten bullets from the UI
       const bulletItems = shadowRoot.querySelectorAll('.jm-bullet-item');
       const rewrittenBullets = [];
       bulletItems.forEach(item => {
+        const checkbox = item.querySelector('.jm-bullet-toggle');
+        if (!checkbox || !checkbox.checked) return; // Skip excluded bullets
         const original = item.querySelector('.jm-bullet-before')?.textContent || '';
         const improved = item.querySelector('.jm-bullet-after')?.textContent || '';
         if (original && improved && original !== improved) {
@@ -3554,7 +3566,7 @@
       });
 
       if (rewrittenBullets.length === 0) {
-        throw new Error('No rewritten bullets found. Click "Improve Resume Bullets" first, then generate the tailored resume.');
+        throw new Error('No bullets selected. Click "Improve Resume Bullets" first and check the ones you want to include.');
       }
 
       status.textContent = 'Editing your resume...';
@@ -3565,6 +3577,13 @@
         rewrittenBullets,
         missingSkills: currentAnalysis.missingSkills || []
       });
+
+      // Build filename: {originalName}_{company}.docx
+      const company = (currentAnalysis.company || '').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      const baseName = (result.originalFileName || 'resume').replace(/\.docx$/i, '');
+      const downloadName = company
+        ? `${baseName}_${company}.docx`
+        : `${baseName}_tailored_${Date.now()}.docx`;
 
       // Convert base64 to blob and trigger download
       const binaryString = atob(result.base64);
@@ -3578,13 +3597,13 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'tailored_resume.docx';
+      a.download = downloadName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets. File downloaded as <strong>tailored_resume.docx</strong>`;
+      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
       status.style.color = 'var(--jm-success, #16a34a)';
       if (result.replacedCount < result.totalBullets) {
         status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;

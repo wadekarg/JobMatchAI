@@ -655,7 +655,8 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
     }
   }
 
-  // Add missing skills to the skills paragraph
+  // Add missing skills to the skills paragraph by appending to the last text run
+  // (to preserve formatting — the first run is often bold like "Skills:")
   if (missingSkills && missingSkills.length > 0 && profile.skills) {
     const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
     let match;
@@ -670,9 +671,14 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
           !paraText.toLowerCase().includes(s.toLowerCase())
         );
         if (newSkills.length > 0) {
-          const updatedText = paraText + ', ' + newSkills.join(', ');
-          const newParaXml = replaceParagraphText(paraXml, updatedText);
-          docXml = docXml.replace(paraXml, newParaXml);
+          const appendText = ', ' + newSkills.join(', ');
+          const escaped = appendText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          // Find the last <w:t>...</w:t> and append to it
+          const lastTIndex = paraXml.lastIndexOf('</w:t>');
+          if (lastTIndex !== -1) {
+            const newParaXml = paraXml.substring(0, lastTIndex) + escaped + paraXml.substring(lastTIndex);
+            docXml = docXml.replace(paraXml, newParaXml);
+          }
         }
         break;
       }
@@ -683,7 +689,12 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
   zip.file('word/document.xml', docXml);
   const modifiedDocx = await zip.generateAsync({ type: 'base64' });
 
-  return { base64: modifiedDocx, replacedCount, totalBullets: rewrittenBullets.length };
+  return {
+    base64: modifiedDocx,
+    replacedCount,
+    totalBullets: rewrittenBullets.length,
+    originalFileName: profile.resumeFileName || 'resume'
+  };
 }
 
 /**
