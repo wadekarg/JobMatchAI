@@ -3658,6 +3658,7 @@
       if (result.replacedCount < result.totalBullets) {
         status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
       }
+      status.innerHTML += `<br><span style="margin-top:6px;display:inline-block;font-size:11px;color:#b45309;background:#fef3c7;padding:4px 8px;border-radius:4px;line-height:1.4;">&#9888; Please review the downloaded resume for accuracy and formatting before submitting your application.</span>`;
     } catch (err) {
       if (err.message === 'DOCX_REQUIRED' || err.message.includes('DOCX_REQUIRED')) {
         status.innerHTML = 'This feature requires a DOCX resume. Please go to <strong>Profile</strong> and upload your resume as a .docx file (not PDF).';
