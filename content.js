@@ -3528,9 +3528,9 @@
   let JSZipLib = null;
 
   /**
-   * Loads JSZip library into the content script's isolated world.
-   * Fetches the script text and evaluates it so JSZip is available
-   * in our scope (not the page's main world).
+   * Loads JSZip library by importing it as a module-compatible script.
+   * Uses dynamic import() with a blob URL to avoid CSP eval restrictions
+   * and stay within the content script's isolated world.
    * @returns {Promise<Object>} The JSZip constructor.
    */
   async function loadJSZip() {
@@ -3539,9 +3539,13 @@
     const url = chrome.runtime.getURL('libs/jszip.min.js');
     const resp = await fetch(url);
     const code = await resp.text();
-    // Evaluate in content script's isolated world
-    const fn = new Function(code + '\nreturn JSZip;');
-    JSZipLib = fn();
+    // Wrap the library code so it exports JSZip as a module default
+    const moduleCode = code + '\nexport default JSZip;';
+    const blob = new Blob([moduleCode], { type: 'text/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    const module = await import(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+    JSZipLib = module.default;
     return JSZipLib;
   }
 
