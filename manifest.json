@@ -43,7 +43,8 @@
       "resources": [
         "libs/pdf.min.js",
         "libs/pdf.worker.min.js",
-        "libs/mammoth.browser.min.js"
+        "libs/mammoth.browser.min.js",
+        "libs/jszip.min.js"
       ],
       "matches": ["<all_urls>"]
     }

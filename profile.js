@@ -293,8 +293,21 @@ async function handleFile(file) {
     setUploadStatus('Resume parsed successfully! Review and edit below.', 'success');
     markProfileDirty();
 
-    // Store file type so tailored resume generator knows if DOCX is available
-    await sendMessage({ type: 'SAVE_RAW_RESUME', rawResumeBase64: null, fileType: ext });
+    // Store raw DOCX bytes for tailored resume generation (direct DOCX editing)
+    if (ext === 'docx') {
+      const ab = await file.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      // Convert to base64 in chunks to avoid call stack overflow on large files
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      const base64 = btoa(binary);
+      await sendMessage({ type: 'SAVE_RAW_RESUME', rawResumeBase64: base64, fileType: ext });
+    } else {
+      await sendMessage({ type: 'SAVE_RAW_RESUME', rawResumeBase64: null, fileType: ext });
+    }
 
     // Auto-fill Q&A answers from parsed resume data
     prefillQAFromProfile(profileData);

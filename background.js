@@ -56,7 +56,6 @@ import {
   buildDropdownMatchPrompt, // Builds the prompt that selects the best option from a dropdown list
   buildCoverLetterPrompt,   // Builds the prompt that writes a tailored cover letter
   buildBulletRewritePrompt, // Builds the prompt that rewrites resume bullets to target a specific JD
-  buildTailoredResumePrompt, // Builds the prompt that generates a tailored HTML resume
   buildTestPrompt,          // Builds a minimal "ping" prompt used to validate AI connectivity
   DEFAULT_MODEL,        // Fallback model identifier when the user has not configured one
   DEFAULT_TEMPERATURE,  // Fallback temperature value (typically 0 or 0.7)
@@ -558,36 +557,23 @@ async function handleRewriteBullets(jobDescription, missingSkills) {
 }
 
 /**
- * Generates a tailored HTML resume by combining the user's parsed profile
- * with rewritten bullets and missing skills. Requires the user to have
- * uploaded a DOCX resume (not PDF).
+ * Returns the raw DOCX bytes and profile data needed for tailored resume
+ * generation. The actual DOCX editing is done in the content script
+ * (which has DOM access for JSZip).
  *
  * @async
- * @param {string}   jobDescription   - Raw text of the target job posting.
- * @param {string[]} missingSkills    - Skills identified as gaps.
- * @param {Array}    rewrittenBullets - Array of {job, original, improved} objects.
- * @returns {Promise<string>} Complete HTML document string for the tailored resume.
+ * @returns {Promise<Object>} Object with rawResumeBase64, profile, and fileType.
  */
-async function handleGenerateTailoredResume(jobDescription, missingSkills, rewrittenBullets) {
-  const settings = await getSettings();
-  if (!settings.apiKey) throw new Error('No API key configured. Go to Settings.');
+async function handleGetResumeData() {
   const profile = await getProfile();
   if (!profile) throw new Error('No resume profile found. Upload your resume first.');
 
-  // Check that the user uploaded a DOCX (not PDF)
-  const { resumeFileType } = await chrome.storage.local.get(['resumeFileType']);
-  if (resumeFileType !== 'docx') {
+  const { rawResumeBase64, resumeFileType } = await chrome.storage.local.get(['rawResumeBase64', 'resumeFileType']);
+  if (!rawResumeBase64 || resumeFileType !== 'docx') {
     throw new Error('DOCX_REQUIRED');
   }
 
-  const messages = buildTailoredResumePrompt(profile, jobDescription, missingSkills, rewrittenBullets);
-  const result = await callAI(settings.provider, settings.apiKey, messages, {
-    model: settings.model,
-    temperature: 0.15,
-    maxTokens: 8192
-  });
-
-  return result;
+  return { rawResumeBase64, profile, fileType: resumeFileType };
 }
 
 /**
@@ -715,7 +701,7 @@ const handlers = {
 
   'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
 
-  'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.jobDescription, msg.missingSkills, msg.rewrittenBullets),
+  'GET_RESUME_DATA': () => handleGetResumeData(),
 
   'SAVE_RAW_RESUME': async (msg) => {
     await chrome.storage.local.set({ rawResumeBase64: msg.rawResumeBase64, resumeFileType: msg.fileType });
