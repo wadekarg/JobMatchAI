@@ -244,11 +244,14 @@ async function handleFile(file) {
     const parsed = await sendMessage({ type: 'PARSE_RESUME', rawText });
     // Merge parsed fields into existing profileData while preserving any extra keys
     // (e.g. resumeFileName from a previous save) and stamp the new file name
-    profileData = { ...profileData, ...parsed, resumeFileName: file.name };
+    profileData = { ...profileData, ...parsed, resumeFileName: file.name, resumeFileType: ext };
     populateProfileForm();
     showResumeLoaded(file.name);
     setUploadStatus('Resume parsed successfully! Review and edit below.', 'success');
     markProfileDirty();
+
+    // Store file type so tailored resume generator knows if DOCX is available
+    await sendMessage({ type: 'SAVE_RAW_RESUME', rawResumeBase64: null, fileType: ext });
   } catch (err) {
     setUploadStatus('Error: ' + err.message, 'error');
   }

@@ -956,6 +956,7 @@
           <button class="jm-btn jm-btn-applied" id="jmMarkApplied" style="display:none">Mark as Applied</button>
           <button class="jm-btn jm-btn-outline" id="jmCoverLetterBtn" style="display:none">&#9993; Cover Letter</button>
           <button class="jm-btn jm-btn-outline" id="jmRewriteBulletsBtn" style="display:none">&#9997; Improve Resume Bullets</button>
+          <button class="jm-btn jm-btn-outline" id="jmTailoredResumeBtn" style="display:none">&#128196; Generate Tailored Resume</button>
         </div>
 
         <div class="jm-score-section" id="jmScoreSection">
@@ -1021,6 +1022,12 @@
           <div id="jmBulletList"></div>
         </div>
 
+        <!-- Tailored resume output -->
+        <div class="jm-section" id="jmTailoredResumeSection" style="display:none">
+          <h3>Tailored Resume</h3>
+          <p id="jmTailoredResumeStatus" style="font-size:12px;color:var(--jm-text-secondary);"></p>
+        </div>
+
         <!-- Job notes (always visible) -->
         <div class="jm-notes-section">
           <h3>Notes</h3>
@@ -1049,6 +1056,7 @@
     panel.querySelector('#jmMarkApplied').addEventListener('click', markApplied);
     panel.querySelector('#jmCoverLetterBtn').addEventListener('click', generateCoverLetter);
     panel.querySelector('#jmRewriteBulletsBtn').addEventListener('click', rewriteBullets);
+    panel.querySelector('#jmTailoredResumeBtn').addEventListener('click', generateTailoredResume);
     panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
     panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
@@ -1760,6 +1768,7 @@
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
       shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
       shadowRoot.getElementById('jmRewriteBulletsBtn').style.display = 'flex';
+      shadowRoot.getElementById('jmTailoredResumeBtn').style.display = 'flex';
       btn.textContent = 'Re-Analyze';
       setStatus('Showing cached results.', 'success');
       setTimeout(clearStatus, 2000);
@@ -1820,9 +1829,11 @@
       }
       shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
       shadowRoot.getElementById('jmRewriteBulletsBtn').style.display = 'flex';
+      shadowRoot.getElementById('jmTailoredResumeBtn').style.display = 'flex';
       // Reset any previous AI output sections
       shadowRoot.getElementById('jmCoverLetterSection').style.display = 'none';
       shadowRoot.getElementById('jmBulletSection').style.display = 'none';
+      shadowRoot.getElementById('jmTailoredResumeSection').style.display = 'none';
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
@@ -3508,6 +3519,83 @@
       scrollPanelTo(section);
       btn.disabled = false;
       btn.innerHTML = '&#9997; Improve Resume Bullets';
+    }
+  }
+
+  // ─── Tailored resume generator ───────────────────────────────
+
+  /**
+   * Generates a tailored HTML resume using AI and opens it in a new tab.
+   * If the user uploaded a PDF (not DOCX), shows a message asking them to
+   * upload a DOCX version instead.
+   * @async
+   */
+  async function generateTailoredResume() {
+    const btn = shadowRoot.getElementById('jmTailoredResumeBtn');
+    const section = shadowRoot.getElementById('jmTailoredResumeSection');
+    const status = shadowRoot.getElementById('jmTailoredResumeStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="jm-spinner"></span> Generating...';
+    section.style.display = 'block';
+    status.textContent = '';
+
+    try {
+      if (!currentAnalysis) throw new Error('Analyze the job first.');
+      const jd = extractJobDescription();
+
+      // Collect rewritten bullets if they exist in the UI
+      const bulletItems = shadowRoot.querySelectorAll('.jm-bullet-item');
+      const rewrittenBullets = [];
+      bulletItems.forEach(item => {
+        const job = item.querySelector('.jm-bullet-job')?.textContent || '';
+        const original = item.querySelector('.jm-bullet-before')?.textContent || '';
+        const improved = item.querySelector('.jm-bullet-after')?.textContent || '';
+        if (improved) rewrittenBullets.push({ job, original, improved });
+      });
+
+      const htmlResume = await sendMessage({
+        type: 'GENERATE_TAILORED_RESUME',
+        jobDescription: jd,
+        missingSkills: currentAnalysis.missingSkills || [],
+        rewrittenBullets: rewrittenBullets
+      });
+
+      // Clean up the response — strip markdown code fences if present
+      let cleanHtml = htmlResume;
+      if (cleanHtml.startsWith('```')) {
+        cleanHtml = cleanHtml.replace(/^```html?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      // Open in a new tab as a data URL with a print button injected
+      const printButton = `<div style="position:fixed;top:10px;right:10px;z-index:9999;display:flex;gap:8px;" id="jm-resume-actions">
+        <button onclick="document.getElementById('jm-resume-actions').style.display='none';window.print();setTimeout(()=>document.getElementById('jm-resume-actions').style.display='flex',500)" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">Download as PDF</button>
+      </div>`;
+
+      // Inject the print button before </body>
+      if (cleanHtml.includes('</body>')) {
+        cleanHtml = cleanHtml.replace('</body>', printButton + '</body>');
+      } else {
+        cleanHtml += printButton;
+      }
+
+      const blob = new Blob([cleanHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+
+      status.textContent = 'Resume opened in a new tab. Use "Download as PDF" button to save.';
+      status.style.color = 'var(--jm-success, #16a34a)';
+    } catch (err) {
+      if (err.message === 'DOCX_REQUIRED' || err.message.includes('DOCX_REQUIRED')) {
+        status.innerHTML = 'This feature requires a DOCX resume. Please go to <strong>Profile</strong> and upload your resume as a .docx file (not PDF).';
+        status.style.color = '#dc2626';
+      } else {
+        status.textContent = 'Error: ' + err.message;
+        status.style.color = '#dc2626';
+      }
+    } finally {
+      scrollPanelTo(section);
+      btn.disabled = false;
+      btn.innerHTML = '&#128196; Generate Tailored Resume';
     }
   }
 
