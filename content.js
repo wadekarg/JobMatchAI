@@ -1024,6 +1024,7 @@
         <div class="jm-section" id="jmBulletSection" style="display:none">
           <h3>Improved Resume Bullets</h3>
           <div id="jmBulletList"></div>
+          <button class="jm-btn jm-btn-outline" id="jmTailoredResumeBtnBottom" style="display:none;margin-top:10px;width:100%;">&#128196; Generate Tailored Resume</button>
         </div>
 
         <!-- Tailored resume output -->
@@ -1061,6 +1062,7 @@
     panel.querySelector('#jmCoverLetterBtn').addEventListener('click', generateCoverLetter);
     panel.querySelector('#jmRewriteBulletsBtn').addEventListener('click', rewriteBullets);
     panel.querySelector('#jmTailoredResumeBtn').addEventListener('click', generateTailoredResume);
+    panel.querySelector('#jmTailoredResumeBtnBottom').addEventListener('click', generateTailoredResume);
     panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
     panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
@@ -3504,7 +3506,7 @@
           item.className = 'jm-bullet-item';
           item.innerHTML = `
             <div class="jm-bullet-header">
-              <input type="checkbox" class="jm-bullet-toggle" checked title="Include this improvement in tailored resume">
+              <input type="checkbox" class="jm-bullet-toggle" checked title="Uncheck to exclude this change from the tailored resume">
               <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
             </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
@@ -3512,6 +3514,9 @@
             <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>`;
           item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
             item.classList.toggle('jm-excluded', !e.target.checked);
+            e.target.title = e.target.checked
+              ? 'Uncheck to exclude this change from the tailored resume'
+              : 'Check to include this change in the tailored resume';
           });
           item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
             navigator.clipboard.writeText(b.improved || '').then(() => {
@@ -3522,6 +3527,8 @@
           });
           list.appendChild(item);
         });
+        // Show the bottom "Generate Tailored Resume" button
+        shadowRoot.getElementById('jmTailoredResumeBtnBottom').style.display = 'flex';
       }
     } catch (err) {
       list.innerHTML = `<p style="font-size:12px;color:#dc2626;">Error: ${escapeHTML(err.message)}</p>`;
