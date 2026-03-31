@@ -780,7 +780,48 @@
       }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
       .jm-bullet-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-      .jm-bullet-toggle { width: 14px; height: 14px; accent-color: var(--jm-primary); cursor: pointer; flex-shrink: 0; }
+      .jm-bullet-toggle-wrap {
+        position: relative;
+        flex-shrink: 0;
+      }
+      .jm-bullet-toggle { width: 14px; height: 14px; accent-color: var(--jm-primary); cursor: pointer; }
+      .jm-bullet-toggle-wrap::before {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #f1f5f9;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.4;
+        padding: 6px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        z-index: 10;
+      }
+      .jm-bullet-toggle-wrap::after {
+        content: '';
+        position: absolute;
+        bottom: calc(100% + 2px);
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: #1e293b;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        z-index: 10;
+      }
+      .jm-bullet-toggle-wrap:hover::before,
+      .jm-bullet-toggle-wrap:hover::after {
+        opacity: 1;
+      }
       .jm-bullet-item.jm-excluded { opacity: 0.45; }
       .jm-bullet-item.jm-excluded .jm-bullet-after { text-decoration: line-through; }
 
@@ -3506,7 +3547,7 @@
           item.className = 'jm-bullet-item';
           item.innerHTML = `
             <div class="jm-bullet-header">
-              <input type="checkbox" class="jm-bullet-toggle" checked title="Uncheck to exclude this change from the tailored resume">
+              <span class="jm-bullet-toggle-wrap" data-tip="Uncheck to exclude from tailored resume"><input type="checkbox" class="jm-bullet-toggle" checked></span>
               <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
             </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
@@ -3514,9 +3555,9 @@
             <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>`;
           item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
             item.classList.toggle('jm-excluded', !e.target.checked);
-            e.target.title = e.target.checked
-              ? 'Uncheck to exclude this change from the tailored resume'
-              : 'Check to include this change in the tailored resume';
+            e.target.closest('.jm-bullet-toggle-wrap').dataset.tip = e.target.checked
+              ? 'Uncheck to exclude from tailored resume'
+              : 'Check to include in tailored resume';
           });
           item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
             navigator.clipboard.writeText(b.improved || '').then(() => {
