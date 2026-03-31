@@ -252,6 +252,9 @@ async function handleFile(file) {
 
     // Store file type so tailored resume generator knows if DOCX is available
     await sendMessage({ type: 'SAVE_RAW_RESUME', rawResumeBase64: null, fileType: ext });
+
+    // Auto-fill Q&A answers from parsed resume data
+    prefillQAFromProfile(profileData);
   } catch (err) {
     setUploadStatus('Error: ' + err.message, 'error');
   }
@@ -787,6 +790,89 @@ function renderQA() {
  * Used as the option values for the "State / Province" dropdown question.
  * @type {string[]}
  */
+/**
+ * Auto-fills Q&A answers from parsed resume profile data.
+ * Only fills answers that are currently empty — never overwrites user edits.
+ * Maps profile fields to matching Q&A questions by question text.
+ *
+ * @param {Object} profile - The parsed resume profile object.
+ */
+function prefillQAFromProfile(profile) {
+  if (!profile || qaList.length === 0) return;
+
+  // Split full name into first/last
+  const nameParts = (profile.name || '').trim().split(/\s+/);
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+  // Parse location: try "City, State ZIP" or "City, State" patterns
+  const loc = (profile.location || '').trim();
+  let city = '', state = '', zip = '';
+  const locMatch = loc.match(/^([^,]+),?\s*([A-Z]{2})?\s*(\d{5})?/i);
+  if (locMatch) {
+    city = (locMatch[1] || '').trim();
+    state = (locMatch[2] || '').toUpperCase();
+    zip = locMatch[3] || '';
+  } else {
+    city = loc; // fallback: use full location as city
+  }
+
+  // Get current job title and company from most recent experience
+  let currentTitle = '', currentCompany = '';
+  if (Array.isArray(profile.experience) && profile.experience.length > 0) {
+    currentTitle = profile.experience[0].title || '';
+    currentCompany = profile.experience[0].company || '';
+  }
+
+  // Get highest education level
+  let educationLevel = '';
+  if (Array.isArray(profile.education) && profile.education.length > 0) {
+    const deg = (profile.education[0].degree || '').toLowerCase();
+    if (deg.includes('doctor') || deg.includes('phd') || deg.includes('edd')) educationLevel = 'Doctorate (PhD/EdD)';
+    else if (deg.includes('master') || deg.includes('mba') || deg.includes('m.s') || deg.includes('m.a')) educationLevel = "Master's Degree (MA/MS/MBA)";
+    else if (deg.includes('bachelor') || deg.includes('b.s') || deg.includes('b.a') || deg.includes('b.e')) educationLevel = "Bachelor's Degree (BA/BS)";
+    else if (deg.includes('associate')) educationLevel = "Associate's Degree";
+  }
+
+  // Get certifications as comma-separated string
+  const certs = (profile.certifications || []).join(', ');
+
+  // Map of Q&A question text (lowercased) → value to fill
+  const mappings = {
+    'first name': firstName,
+    'last name': lastName,
+    'email address': profile.email || '',
+    'phone number': profile.phone || '',
+    'city': city,
+    'zip / postal code': zip,
+    'current job title': currentTitle,
+    'current employer / company': currentCompany,
+    'linkedin profile url': profile.linkedin || '',
+    'portfolio / personal website url': profile.website || '',
+    'github profile url': profile.github || '',
+    'relevant certifications or professional licenses': certs,
+  };
+
+  // Add state mapping only if we found a valid state abbreviation
+  if (state) mappings['state / province'] = state;
+  // Add education level only if we identified it
+  if (educationLevel) mappings['highest level of education completed'] = educationLevel;
+
+  let filled = 0;
+  qaList.forEach(qa => {
+    const key = qa.question.toLowerCase().trim();
+    if (mappings[key] && !qa.answer) {
+      qa.answer = mappings[key];
+      filled++;
+    }
+  });
+
+  if (filled > 0) {
+    renderQA();
+    showToast(`Auto-filled ${filled} Q&A answers from your resume.`);
+  }
+}
+
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN',
   'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH',
