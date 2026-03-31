@@ -3524,89 +3524,9 @@
 
   // ─── Tailored resume generator ───────────────────────────────
 
-  /** JSZip instance — loaded dynamically on first use. */
-  let JSZipLib = null;
-
   /**
-   * Loads JSZip library by importing it as a module-compatible script.
-   * Uses dynamic import() with a blob URL to avoid CSP eval restrictions
-   * and stay within the content script's isolated world.
-   * @returns {Promise<Object>} The JSZip constructor.
-   */
-  async function loadJSZip() {
-    if (JSZipLib) return JSZipLib;
-    if (typeof JSZip !== 'undefined') { JSZipLib = JSZip; return JSZipLib; }
-    const url = chrome.runtime.getURL('libs/jszip.min.js');
-    const resp = await fetch(url);
-    const code = await resp.text();
-    // Wrap the library code so it exports JSZip as a module default
-    const moduleCode = code + '\nexport default JSZip;';
-    const blob = new Blob([moduleCode], { type: 'text/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
-    const module = await import(blobUrl);
-    URL.revokeObjectURL(blobUrl);
-    JSZipLib = module.default;
-    return JSZipLib;
-  }
-
-  /**
-   * Extracts all text from a DOCX XML paragraph element (<w:p>).
-   * Concatenates all <w:t> text nodes within the paragraph.
-   * @param {string} paragraphXml - The raw XML string of a <w:p> element.
-   * @returns {string} The concatenated plain text.
-   */
-  function extractParagraphText(paragraphXml) {
-    const textMatches = paragraphXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
-    return textMatches.map(m => m.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '')).join('');
-  }
-
-  /**
-   * Replaces the text content of a DOCX XML paragraph while preserving
-   * all formatting runs. Puts all new text into the first <w:t> element
-   * and clears the rest.
-   * @param {string} paragraphXml - The raw XML string of a <w:p> element.
-   * @param {string} newText - The replacement text.
-   * @returns {string} The modified paragraph XML.
-   */
-  function replaceParagraphText(paragraphXml, newText) {
-    let first = true;
-    return paragraphXml.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, (match) => {
-      if (first) {
-        first = false;
-        // Preserve xml:space="preserve" attribute if present
-        const tag = match.match(/<w:t[^>]*>/)[0];
-        const hasSpace = tag.includes('xml:space');
-        const openTag = hasSpace ? tag : '<w:t xml:space="preserve">';
-        return openTag + escapeXml(newText) + '</w:t>';
-      }
-      // Clear subsequent text runs
-      return match.replace(/>[^<]*</, '><');
-    });
-  }
-
-  /**
-   * Escapes special XML characters in text.
-   * @param {string} str - Input string.
-   * @returns {string} XML-safe string.
-   */
-  function escapeXml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-  }
-
-  /**
-   * Normalizes text for fuzzy matching: lowercases, strips extra whitespace
-   * and punctuation differences.
-   * @param {string} str - Input string.
-   * @returns {string} Normalized string.
-   */
-  function normalizeForMatch(str) {
-    return str.toLowerCase().replace(/\s+/g, ' ').trim();
-  }
-
-  /**
-   * Generates a tailored DOCX resume by directly editing the uploaded DOCX file.
-   * Replaces experience bullets with rewritten versions and adds missing skills.
+   * Generates a tailored DOCX resume by sending rewritten bullets to the
+   * background service worker, which edits the DOCX directly using JSZip.
    * Downloads the modified DOCX file.
    * @async
    */
@@ -3637,91 +3557,25 @@
         throw new Error('No rewritten bullets found. Click "Improve Resume Bullets" first, then generate the tailored resume.');
       }
 
-      status.textContent = 'Loading resume data...';
-
-      // Get raw DOCX bytes and profile from storage
-      const resumeData = await sendMessage({ type: 'GET_RESUME_DATA' });
-
-      status.textContent = 'Loading JSZip...';
-      const JSZip = await loadJSZip();
-
       status.textContent = 'Editing your resume...';
 
-      // Decode base64 to ArrayBuffer
-      const binaryString = atob(resumeData.rawResumeBase64);
+      // Send to background for DOCX editing
+      const result = await sendMessage({
+        type: 'GENERATE_TAILORED_RESUME',
+        rewrittenBullets,
+        missingSkills: currentAnalysis.missingSkills || []
+      });
+
+      // Convert base64 to blob and trigger download
+      const binaryString = atob(result.base64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-
-      // Unzip the DOCX
-      const zip = await JSZip.loadAsync(bytes.buffer);
-      const docXmlFile = zip.file('word/document.xml');
-      if (!docXmlFile) throw new Error('Invalid DOCX file — word/document.xml not found.');
-
-      let docXml = await docXmlFile.async('string');
-
-      // Replace bullets: find paragraphs whose text matches original bullets
-      let replacedCount = 0;
-      for (const bullet of rewrittenBullets) {
-        const normalizedOriginal = normalizeForMatch(bullet.original);
-        // Find all <w:p>...</w:p> paragraphs
-        const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
-        let match;
-        while ((match = paragraphRegex.exec(docXml)) !== null) {
-          const paraXml = match[0];
-          const paraText = extractParagraphText(paraXml);
-          const normalizedPara = normalizeForMatch(paraText);
-
-          // Fuzzy match: check if paragraph text contains the original bullet
-          // or if the original bullet contains the paragraph text (for partial matches)
-          if (normalizedPara && normalizedOriginal &&
-              (normalizedPara.includes(normalizedOriginal) ||
-               normalizedOriginal.includes(normalizedPara)) &&
-              normalizedPara.length > 15) {
-            const newParaXml = replaceParagraphText(paraXml, bullet.improved);
-            docXml = docXml.replace(paraXml, newParaXml);
-            replacedCount++;
-            break; // Move to next bullet
-          }
-        }
-      }
-
-      // Add missing skills to the skills section if found
-      const missingSkills = currentAnalysis.missingSkills || [];
-      if (missingSkills.length > 0 && resumeData.profile.skills) {
-        // Find a paragraph containing existing skills and append missing ones
-        const existingSkills = resumeData.profile.skills;
-        const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
-        let match;
-        while ((match = paragraphRegex.exec(docXml)) !== null) {
-          const paraXml = match[0];
-          const paraText = extractParagraphText(paraXml);
-          // Check if this paragraph contains multiple known skills
-          const skillsFound = existingSkills.filter(s =>
-            paraText.toLowerCase().includes(s.toLowerCase())
-          );
-          if (skillsFound.length >= 3) {
-            // This is likely the skills paragraph — append missing skills
-            const newSkills = missingSkills.filter(s =>
-              !paraText.toLowerCase().includes(s.toLowerCase())
-            );
-            if (newSkills.length > 0) {
-              const updatedText = paraText + ', ' + newSkills.join(', ');
-              const newParaXml = replaceParagraphText(paraXml, updatedText);
-              docXml = docXml.replace(paraXml, newParaXml);
-            }
-            break;
-          }
-        }
-      }
-
-      // Save modified XML back to the ZIP
-      zip.file('word/document.xml', docXml);
-
-      // Generate the modified DOCX and trigger download
-      const modifiedDocx = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      const url = URL.createObjectURL(modifiedDocx);
+      const blob = new Blob([bytes.buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'tailored_resume.docx';
@@ -3730,10 +3584,10 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      status.innerHTML = `Done! Replaced <strong>${replacedCount}</strong> of ${rewrittenBullets.length} bullets. File downloaded as <strong>tailored_resume.docx</strong>`;
+      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets. File downloaded as <strong>tailored_resume.docx</strong>`;
       status.style.color = 'var(--jm-success, #16a34a)';
-      if (replacedCount < rewrittenBullets.length) {
-        status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${rewrittenBullets.length - replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
+      if (result.replacedCount < result.totalBullets) {
+        status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
       }
     } catch (err) {
       if (err.message === 'DOCX_REQUIRED' || err.message.includes('DOCX_REQUIRED')) {

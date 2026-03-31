@@ -46,6 +46,7 @@
 
 // ─── Imports ────────────────────────────────────────────────────────────────
 
+import JSZip from './libs/jszip.esm.js';
 import {
   callAI,           // Core function that sends a message array to the chosen AI provider
   PROVIDERS,        // Array of supported provider descriptors (id, name, models, …)
@@ -557,14 +558,58 @@ async function handleRewriteBullets(jobDescription, missingSkills) {
 }
 
 /**
- * Returns the raw DOCX bytes and profile data needed for tailored resume
- * generation. The actual DOCX editing is done in the content script
- * (which has DOM access for JSZip).
+ * Extracts all text from a DOCX XML paragraph (<w:p>) by concatenating
+ * all <w:t> text nodes.
+ * @param {string} paragraphXml - Raw XML of a <w:p> element.
+ * @returns {string} Concatenated plain text.
+ */
+function extractParagraphText(paragraphXml) {
+  const textMatches = paragraphXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
+  return textMatches.map(m => m.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '')).join('');
+}
+
+/**
+ * Replaces text in a DOCX XML paragraph preserving formatting runs.
+ * Puts all new text into the first <w:t> and clears the rest.
+ * @param {string} paragraphXml - Raw XML of a <w:p> element.
+ * @param {string} newText - Replacement text.
+ * @returns {string} Modified paragraph XML.
+ */
+function replaceParagraphText(paragraphXml, newText) {
+  let first = true;
+  const escaped = newText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                         .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  return paragraphXml.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, (match) => {
+    if (first) {
+      first = false;
+      const tag = match.match(/<w:t[^>]*>/)[0];
+      const openTag = tag.includes('xml:space') ? tag : '<w:t xml:space="preserve">';
+      return openTag + escaped + '</w:t>';
+    }
+    return match.replace(/>[^<]*</, '><');
+  });
+}
+
+/**
+ * Normalizes text for fuzzy matching.
+ * @param {string} str - Input string.
+ * @returns {string} Normalized string.
+ */
+function normalizeForMatch(str) {
+  return str.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Generates a tailored DOCX resume by editing the original uploaded DOCX.
+ * Replaces experience bullets with rewritten versions and appends missing
+ * skills. Returns the modified DOCX as base64.
  *
  * @async
- * @returns {Promise<Object>} Object with rawResumeBase64, profile, and fileType.
+ * @param {Array}    rewrittenBullets - Array of {original, improved} objects.
+ * @param {string[]} missingSkills    - Skills identified as gaps.
+ * @returns {Promise<{base64: string, replacedCount: number, totalBullets: number}>}
  */
-async function handleGetResumeData() {
+async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
   const profile = await getProfile();
   if (!profile) throw new Error('No resume profile found. Upload your resume first.');
 
@@ -573,7 +618,72 @@ async function handleGetResumeData() {
     throw new Error('DOCX_REQUIRED');
   }
 
-  return { rawResumeBase64, profile, fileType: resumeFileType };
+  // Decode base64 to ArrayBuffer
+  const binaryString = atob(rawResumeBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Unzip the DOCX
+  const zip = await JSZip.loadAsync(bytes.buffer);
+  const docXmlFile = zip.file('word/document.xml');
+  if (!docXmlFile) throw new Error('Invalid DOCX file — word/document.xml not found.');
+
+  let docXml = await docXmlFile.async('string');
+
+  // Replace bullets
+  let replacedCount = 0;
+  for (const bullet of rewrittenBullets) {
+    const normalizedOriginal = normalizeForMatch(bullet.original);
+    const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+    let match;
+    while ((match = paragraphRegex.exec(docXml)) !== null) {
+      const paraXml = match[0];
+      const paraText = extractParagraphText(paraXml);
+      const normalizedPara = normalizeForMatch(paraText);
+
+      if (normalizedPara && normalizedOriginal &&
+          (normalizedPara.includes(normalizedOriginal) ||
+           normalizedOriginal.includes(normalizedPara)) &&
+          normalizedPara.length > 15) {
+        const newParaXml = replaceParagraphText(paraXml, bullet.improved);
+        docXml = docXml.replace(paraXml, newParaXml);
+        replacedCount++;
+        break;
+      }
+    }
+  }
+
+  // Add missing skills to the skills paragraph
+  if (missingSkills && missingSkills.length > 0 && profile.skills) {
+    const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+    let match;
+    while ((match = paragraphRegex.exec(docXml)) !== null) {
+      const paraXml = match[0];
+      const paraText = extractParagraphText(paraXml);
+      const skillsFound = profile.skills.filter(s =>
+        paraText.toLowerCase().includes(s.toLowerCase())
+      );
+      if (skillsFound.length >= 3) {
+        const newSkills = missingSkills.filter(s =>
+          !paraText.toLowerCase().includes(s.toLowerCase())
+        );
+        if (newSkills.length > 0) {
+          const updatedText = paraText + ', ' + newSkills.join(', ');
+          const newParaXml = replaceParagraphText(paraXml, updatedText);
+          docXml = docXml.replace(paraXml, newParaXml);
+        }
+        break;
+      }
+    }
+  }
+
+  // Save modified XML and generate DOCX
+  zip.file('word/document.xml', docXml);
+  const modifiedDocx = await zip.generateAsync({ type: 'base64' });
+
+  return { base64: modifiedDocx, replacedCount, totalBullets: rewrittenBullets.length };
 }
 
 /**
@@ -701,7 +811,7 @@ const handlers = {
 
   'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
 
-  'GET_RESUME_DATA': () => handleGetResumeData(),
+  'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.rewrittenBullets, msg.missingSkills),
 
   'SAVE_RAW_RESUME': async (msg) => {
     await chrome.storage.local.set({ rawResumeBase64: msg.rawResumeBase64, resumeFileType: msg.fileType });
