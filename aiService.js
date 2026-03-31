@@ -94,6 +94,7 @@ const PROVIDERS = {
     endpoint: 'https://api.anthropic.com/v1/messages',
     keyPlaceholder: 'sk-ant-api03-...',
     hint: 'Get key at console.anthropic.com',
+    keyUrl: 'https://console.anthropic.com',
     free: false,
     models: [
       { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
@@ -114,6 +115,7 @@ const PROVIDERS = {
     endpoint: 'https://api.openai.com/v1/chat/completions',
     keyPlaceholder: 'sk-...',
     hint: 'Get key at platform.openai.com/api-keys',
+    keyUrl: 'https://platform.openai.com/api-keys',
     free: false,
     models: [
       { id: 'gpt-4.1', name: 'GPT-4.1' },
@@ -141,6 +143,7 @@ const PROVIDERS = {
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
     keyPlaceholder: 'AIza...',
     hint: 'Get key at aistudio.google.com/apikey — Free tier available',
+    keyUrl: 'https://aistudio.google.com/apikey',
     free: true,
     models: [
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
@@ -161,6 +164,7 @@ const PROVIDERS = {
     endpoint: 'https://api.groq.com/openai/v1/chat/completions',
     keyPlaceholder: 'gsk_...',
     hint: 'Get key at console.groq.com — Free tier available',
+    keyUrl: 'https://console.groq.com/keys',
     free: true,
     models: [
       { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' },
@@ -182,6 +186,7 @@ const PROVIDERS = {
     endpoint: 'https://api.cerebras.ai/v1/chat/completions',
     keyPlaceholder: 'csk-...',
     hint: 'Get key at cloud.cerebras.ai — Free tier available',
+    keyUrl: 'https://cloud.cerebras.ai',
     free: true,
     models: [
       { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
@@ -202,6 +207,7 @@ const PROVIDERS = {
     endpoint: 'https://api.together.xyz/v1/chat/completions',
     keyPlaceholder: 'tok_...',
     hint: 'Get key at api.together.ai — Free credits on signup',
+    keyUrl: 'https://api.together.ai',
     free: true,
     models: [
       { id: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', name: 'Llama 3.3 70B Turbo' },
@@ -226,6 +232,7 @@ const PROVIDERS = {
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     keyPlaceholder: 'sk-or-...',
     hint: 'Get key at openrouter.ai — Aggregator with free models',
+    keyUrl: 'https://openrouter.ai/keys',
     free: true,
     extraHeaders: { 'HTTP-Referer': 'https://github.com/wadekarg/JobMatchAI', 'X-Title': 'JobMatch AI' },
     models: [
@@ -247,6 +254,7 @@ const PROVIDERS = {
     endpoint: 'https://api.mistral.ai/v1/chat/completions',
     keyPlaceholder: 'M...',
     hint: 'Get key at console.mistral.ai — Free tier available',
+    keyUrl: 'https://console.mistral.ai',
     free: true,
     models: [
       { id: 'mistral-large-latest', name: 'Mistral Large 3' },
@@ -268,6 +276,7 @@ const PROVIDERS = {
     endpoint: 'https://api.deepseek.com/chat/completions',
     keyPlaceholder: 'sk-...',
     hint: 'Get key at platform.deepseek.com — Very affordable',
+    keyUrl: 'https://platform.deepseek.com',
     free: false,
     models: [
       { id: 'deepseek-chat', name: 'DeepSeek V3' },
@@ -290,6 +299,7 @@ const PROVIDERS = {
     endpoint: 'https://api.cohere.com/v2/chat',
     keyPlaceholder: '...',
     hint: 'Get key at dashboard.cohere.com — Free trial tier',
+    keyUrl: 'https://dashboard.cohere.com/api-keys',
     free: true,
     models: [
       { id: 'command-a-03-2025', name: 'Command A' },

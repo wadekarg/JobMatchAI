@@ -1160,10 +1160,15 @@ function updateProviderUI(providerId) {
   // Update the API key input placeholder to show the expected key format
   document.getElementById('sApiKey').placeholder = config.keyPlaceholder || 'Enter API key...';
 
-  // Update the informational hint below the key input (e.g. sign-up URL)
+  // Update the informational hint below the provider dropdown with a clickable link
   const hintEl = document.getElementById('providerHint');
   if (hintEl) {
-    hintEl.textContent = config.hint || '';
+    if (config.keyUrl) {
+      const freeBadge = config.free ? ' — Free tier' : '';
+      hintEl.innerHTML = `<a href="${config.keyUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:none;">Get your API key here &rarr;</a>${freeBadge}`;
+    } else {
+      hintEl.textContent = config.hint || '';
+    }
   }
 }
 
