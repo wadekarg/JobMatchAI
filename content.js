@@ -789,8 +789,7 @@
         content: attr(data-tip);
         position: absolute;
         bottom: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
         background: #1e293b;
         color: #f1f5f9;
         font-size: 11px;
@@ -809,8 +808,7 @@
         content: '';
         position: absolute;
         bottom: calc(100% + 2px);
-        left: 50%;
-        transform: translateX(-50%);
+        left: 7px;
         border: 5px solid transparent;
         border-top-color: #1e293b;
         pointer-events: none;
