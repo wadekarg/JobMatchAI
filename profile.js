@@ -49,13 +49,56 @@ let profileData = {
 let profileDirty = false;
 
 /**
- * Marks the profile as dirty and highlights the save button to indicate
- * unsaved changes.
+ * Timer ID for the debounced autosave. Cleared and reset on every edit
+ * so we only save once the user stops typing for 2 seconds.
+ * @type {number|null}
+ */
+let autosaveTimer = null;
+
+/**
+ * Marks the profile as dirty, highlights the save button, and schedules
+ * an autosave after 2 seconds of inactivity.
  */
 function markProfileDirty() {
   profileDirty = true;
   const btn = document.getElementById('saveProfileBtn');
   if (btn) btn.style.background = '#f59e0b';
+
+  // Debounced autosave: reset timer on every change, save after 2s idle
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => autoSaveProfile(), 2000);
+}
+
+/**
+ * Silently saves the profile without user interaction.
+ * Syncs form fields, saves to storage, and updates slot data.
+ */
+async function autoSaveProfile() {
+  if (!profileDirty) return;
+
+  // Sync plain text fields from the form
+  profileData.name     = document.getElementById('pName').value.trim();
+  profileData.email    = document.getElementById('pEmail').value.trim();
+  profileData.phone    = document.getElementById('pPhone').value.trim();
+  profileData.location = document.getElementById('pLocation').value.trim();
+  profileData.linkedin = document.getElementById('pLinkedin').value.trim();
+  profileData.website  = document.getElementById('pWebsite').value.trim();
+  profileData.summary  = document.getElementById('pSummary').value.trim();
+
+  try {
+    await sendMessage({ type: 'SAVE_PROFILE', profile: profileData });
+    profileSlots[activeSlot] = JSON.parse(JSON.stringify(profileData));
+    await chrome.storage.local.set({ profileSlots });
+    updateSlotButtons();
+    markProfileClean();
+    const btn = document.getElementById('saveProfileBtn');
+    if (btn) {
+      btn.textContent = 'Saved';
+      setTimeout(() => { btn.textContent = 'Save Profile'; }, 1500);
+    }
+  } catch (_) {
+    // Silent fail — user can still use the manual save button
+  }
 }
 
 /**
