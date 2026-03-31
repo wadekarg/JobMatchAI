@@ -778,7 +778,13 @@
         margin-bottom: 7px;
         line-height: 1.5;
       }
+      .jm-bullet-actions { display: flex; gap: 6px; align-items: center; }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
+      .jm-bullet-refresh { font-size: 11px; padding: 3px 8px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; }
+      .jm-bullet-refresh:hover { border-color: var(--jm-primary); color: var(--jm-primary); }
+      .jm-bullet-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+      @keyframes jm-spin-refresh { to { transform: rotate(360deg); } }
+      .jm-bullet-refresh.jm-spinning { animation: jm-spin-refresh 0.8s linear infinite; }
       .jm-bullet-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
       .jm-bullet-toggle-wrap {
         position: relative;
@@ -3550,7 +3556,10 @@
             </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
             <div class="jm-bullet-after">${escapeHTML(b.improved || '')}</div>
-            <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>`;
+            <div class="jm-bullet-actions">
+              <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>
+              <button class="jm-bullet-refresh" title="Regenerate this bullet">&#8635;</button>
+            </div>`;
           item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
             item.classList.toggle('jm-excluded', !e.target.checked);
             e.target.closest('.jm-bullet-toggle-wrap').dataset.tip = e.target.checked
@@ -3558,11 +3567,33 @@
               : 'Check to include in tailored resume';
           });
           item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
-            navigator.clipboard.writeText(b.improved || '').then(() => {
+            const currentText = item.querySelector('.jm-bullet-after').textContent;
+            navigator.clipboard.writeText(currentText).then(() => {
               const cb = item.querySelector('.jm-bullet-copy');
               cb.textContent = 'Copied!';
               setTimeout(() => { cb.textContent = 'Copy'; }, 1500);
             }).catch(() => {});
+          });
+          item.querySelector('.jm-bullet-refresh').addEventListener('click', async (e) => {
+            const refreshBtn = e.currentTarget;
+            refreshBtn.disabled = true;
+            refreshBtn.classList.add('jm-spinning');
+            try {
+              const jd = extractJobDescription();
+              const original = item.querySelector('.jm-bullet-before').textContent;
+              const newBullet = await sendMessage({
+                type: 'REWRITE_SINGLE_BULLET',
+                originalBullet: original,
+                jobDescription: jd,
+                missingSkills: currentAnalysis.missingSkills || []
+              });
+              item.querySelector('.jm-bullet-after').textContent = newBullet;
+            } catch (err) {
+              item.querySelector('.jm-bullet-after').textContent = 'Error: ' + err.message;
+            } finally {
+              refreshBtn.disabled = false;
+              refreshBtn.classList.remove('jm-spinning');
+            }
           });
           list.appendChild(item);
         });

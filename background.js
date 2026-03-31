@@ -57,6 +57,7 @@ import {
   buildDropdownMatchPrompt, // Builds the prompt that selects the best option from a dropdown list
   buildCoverLetterPrompt,   // Builds the prompt that writes a tailored cover letter
   buildBulletRewritePrompt, // Builds the prompt that rewrites resume bullets to target a specific JD
+  buildSingleBulletRewritePrompt, // Builds the prompt to regenerate a single bullet
   buildTestPrompt,          // Builds a minimal "ping" prompt used to validate AI connectivity
   DEFAULT_MODEL,        // Fallback model identifier when the user has not configured one
   DEFAULT_TEMPERATURE,  // Fallback temperature value (typically 0 or 0.7)
@@ -821,6 +822,18 @@ const handlers = {
   'GENERATE_COVER_LETTER': (msg) => handleGenerateCoverLetter(msg.jobDescription, msg.analysis),
 
   'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
+
+  'REWRITE_SINGLE_BULLET': async (msg) => {
+    const settings = await getSettings();
+    if (!settings.apiKey) throw new Error('No API key configured.');
+    const messages = buildSingleBulletRewritePrompt(msg.originalBullet, msg.jobDescription, msg.missingSkills);
+    const result = await callAI(settings.provider, settings.apiKey, messages, {
+      model: settings.model,
+      temperature: 0.4,
+      maxTokens: 512
+    });
+    return result.trim();
+  },
 
   'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.rewrittenBullets, msg.missingSkills),
 
