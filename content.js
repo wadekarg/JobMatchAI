@@ -3528,20 +3528,21 @@
   let JSZipLib = null;
 
   /**
-   * Loads JSZip library dynamically into the page if not already loaded.
+   * Loads JSZip library into the content script's isolated world.
+   * Fetches the script text and evaluates it so JSZip is available
+   * in our scope (not the page's main world).
    * @returns {Promise<Object>} The JSZip constructor.
    */
   async function loadJSZip() {
     if (JSZipLib) return JSZipLib;
-    // Check if already on window (e.g. loaded by another script)
-    if (window.JSZip) { JSZipLib = window.JSZip; return JSZipLib; }
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = chrome.runtime.getURL('libs/jszip.min.js');
-      script.onload = () => { JSZipLib = window.JSZip; resolve(JSZipLib); };
-      script.onerror = () => reject(new Error('Failed to load JSZip library.'));
-      document.head.appendChild(script);
-    });
+    if (typeof JSZip !== 'undefined') { JSZipLib = JSZip; return JSZipLib; }
+    const url = chrome.runtime.getURL('libs/jszip.min.js');
+    const resp = await fetch(url);
+    const code = await resp.text();
+    // Evaluate in content script's isolated world
+    const fn = new Function(code + '\nreturn JSZip;');
+    JSZipLib = fn();
+    return JSZipLib;
   }
 
   /**
