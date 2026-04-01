@@ -3733,8 +3733,10 @@
       const rewrittenBullets = [];
       const customBullets = [];
       bulletItems.forEach(item => {
+        // Skip excluded bullets (unchecked checkbox adds jm-excluded class)
+        if (item.classList.contains('jm-excluded')) return;
         const checkbox = item.querySelector('.jm-bullet-toggle');
-        if (!checkbox || !checkbox.checked) return;
+        if (checkbox && !checkbox.checked) return;
         const improved = item.querySelector('.jm-bullet-after')?.textContent || '';
         if (!improved) return;
 
@@ -3797,8 +3799,11 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      const totalSelected = rewrittenBullets.length + customBullets.length;
+      const totalAll = shadowRoot.querySelectorAll('.jm-bullet-item').length;
       const insertedInfo = result.insertedCount > 0 ? `, inserted <strong>${result.insertedCount}</strong> new` : '';
-      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets${insertedInfo}. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
+      const skippedInfo = totalAll > totalSelected ? ` (${totalAll - totalSelected} excluded)` : '';
+      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} selected bullets${insertedInfo}${skippedInfo}. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
       status.style.color = 'var(--jm-success, #16a34a)';
       if (result.replacedCount < result.totalBullets) {
         status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
