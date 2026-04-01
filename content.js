@@ -777,7 +777,14 @@
         color: var(--jm-text);
         margin-bottom: 7px;
         line-height: 1.5;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        transition: border-color 0.15s;
+        outline: none;
       }
+      .jm-bullet-after:hover { border-color: var(--jm-border); }
+      .jm-bullet-after:focus { border-color: var(--jm-primary); background: var(--jm-card-bg); }
       .jm-bullet-actions { display: flex; gap: 6px; align-items: center; }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
       .jm-bullet-refresh { font-size: 11px; padding: 3px 8px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; }
@@ -3555,7 +3562,7 @@
               <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
             </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
-            <div class="jm-bullet-after">${escapeHTML(b.improved || '')}</div>
+            <div class="jm-bullet-after" contenteditable="true" spellcheck="false" title="Click to edit — changes are used when regenerating or generating tailored resume">${escapeHTML(b.improved || '')}</div>
             <div class="jm-bullet-actions">
               <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>
               <button class="jm-bullet-refresh" title="Regenerate this bullet">&#8635;</button>
@@ -3581,9 +3588,11 @@
             try {
               const jd = extractJobDescription();
               const original = item.querySelector('.jm-bullet-before').textContent;
+              const currentEdit = item.querySelector('.jm-bullet-after').textContent.trim();
               const newBullet = await sendMessage({
                 type: 'REWRITE_SINGLE_BULLET',
                 originalBullet: original,
+                currentEdit: currentEdit !== original ? currentEdit : '',
                 jobDescription: jd,
                 missingSkills: currentAnalysis.missingSkills || []
               });

@@ -826,7 +826,7 @@ const handlers = {
   'REWRITE_SINGLE_BULLET': async (msg) => {
     const settings = await getSettings();
     if (!settings.apiKey) throw new Error('No API key configured.');
-    const messages = buildSingleBulletRewritePrompt(msg.originalBullet, msg.jobDescription, msg.missingSkills);
+    const messages = buildSingleBulletRewritePrompt(msg.originalBullet, msg.jobDescription, msg.missingSkills, msg.currentEdit);
     const result = await callAI(settings.provider, settings.apiKey, messages, {
       model: settings.model,
       temperature: 0.4,

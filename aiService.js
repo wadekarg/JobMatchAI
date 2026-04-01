@@ -1281,10 +1281,15 @@ Return ONLY the complete HTML document. No commentary, no markdown.`
  * @param {string}   originalBullet  - The original bullet text from the resume.
  * @param {string}   jobDescription  - The target job posting text.
  * @param {string[]} missingSkills   - Skills identified as gaps.
+ * @param {string}   [currentEdit]   - The user's edited version (if any) to use as context.
  * @returns {Array<{role: string, content: string}>} A single-message messages array.
  */
-function buildSingleBulletRewritePrompt(originalBullet, jobDescription, missingSkills) {
+function buildSingleBulletRewritePrompt(originalBullet, jobDescription, missingSkills, currentEdit) {
   const missing = (missingSkills || []).join(', ');
+  const editContext = currentEdit
+    ? `\n\nUSER'S EDITED VERSION (use as guidance for tone, focus, and direction):\n<user_edit>\n${currentEdit}\n</user_edit>\n\nImprove upon the user's edit — keep their intent and direction but make it more polished and impactful.`
+    : '\n\nGive a DIFFERENT version than what you might have generated before — try a fresh angle.';
+
   return [
     {
       role: 'user',
@@ -1295,8 +1300,8 @@ RULES:
 - Rewrite the bullet — never fabricate experience, numbers, or results that aren't already implied
 - Weave in JD keywords and action verbs naturally
 - Incorporate these missing skills where they genuinely fit: ${missing || 'none'}
-- Give a DIFFERENT version than what you might have generated before — try a fresh angle
 - Return ONLY the improved bullet text — no JSON, no quotes, no commentary, no prefix
+${editContext}
 
 ORIGINAL BULLET:
 <original_bullet>
