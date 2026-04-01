@@ -785,6 +785,16 @@
       }
       .jm-bullet-after:hover { border-color: var(--jm-border); }
       .jm-bullet-after:focus { border-color: var(--jm-primary); background: var(--jm-card-bg); }
+      .jm-bullet-skills-btn { font-size: 10px; padding: 2px 7px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; margin-left: auto; white-space: nowrap; }
+      .jm-bullet-skills-btn:hover { border-color: var(--jm-primary); color: var(--jm-primary); }
+      .jm-bullet-skills-btn.jm-active { border-color: var(--jm-primary); color: var(--jm-primary); background: var(--jm-primary)/10; }
+      .jm-bullet-skills-panel { display: none; margin: 6px 0; padding: 8px 10px; background: var(--jm-card-bg); border: 1px solid var(--jm-border); border-radius: 8px; }
+      .jm-bullet-skills-panel.jm-open { display: block; }
+      .jm-bullet-skills-label { font-size: 10px; font-weight: 600; color: var(--jm-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .jm-bullet-skills-list { display: flex; flex-wrap: wrap; gap: 4px; }
+      .jm-skill-chip { font-size: 11px; padding: 3px 8px; border-radius: 12px; cursor: pointer; border: 1px solid var(--jm-primary); color: var(--jm-primary); background: var(--jm-primary)/8; transition: all 0.15s; user-select: none; }
+      .jm-skill-chip:hover { opacity: 0.8; }
+      .jm-skill-chip.jm-excluded-skill { border-color: var(--jm-border); color: var(--jm-text-muted); background: transparent; text-decoration: line-through; opacity: 0.5; }
       .jm-bullet-actions { display: flex; gap: 6px; align-items: center; }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
       .jm-bullet-refresh { font-size: 11px; padding: 3px 8px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; }
@@ -3556,10 +3566,21 @@
         bullets.forEach(b => {
           const item = document.createElement('div');
           item.className = 'jm-bullet-item';
+          // Build skill chips HTML from missing skills
+          const missingSkills = currentAnalysis.missingSkills || [];
+          const skillChipsHtml = missingSkills.map(s =>
+            `<span class="jm-skill-chip" data-skill="${escapeHTML(s)}">${escapeHTML(s)}</span>`
+          ).join('');
+
           item.innerHTML = `
             <div class="jm-bullet-header">
               <span class="jm-bullet-toggle-wrap" data-tip="Uncheck to exclude from tailored resume"><input type="checkbox" class="jm-bullet-toggle" checked></span>
               <div class="jm-bullet-job">${escapeHTML(b.job || '')}</div>
+              <button class="jm-bullet-skills-btn" title="Manage missing skills for this bullet">Skills</button>
+            </div>
+            <div class="jm-bullet-skills-panel">
+              <div class="jm-bullet-skills-label">Missing skills to include (click to exclude)</div>
+              <div class="jm-bullet-skills-list">${skillChipsHtml}</div>
             </div>
             <div class="jm-bullet-before">${escapeHTML(b.original || '')}</div>
             <div class="jm-bullet-after" contenteditable="true" spellcheck="false" title="Click to edit — changes are used when regenerating or generating tailored resume">${escapeHTML(b.improved || '')}</div>
@@ -3567,12 +3588,30 @@
               <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>
               <button class="jm-bullet-refresh" title="Regenerate this bullet">&#8635;</button>
             </div>`;
+          // Include/exclude toggle
           item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
             item.classList.toggle('jm-excluded', !e.target.checked);
             e.target.closest('.jm-bullet-toggle-wrap').dataset.tip = e.target.checked
               ? 'Uncheck to exclude from tailored resume'
               : 'Check to include in tailored resume';
           });
+
+          // Skills panel toggle
+          item.querySelector('.jm-bullet-skills-btn').addEventListener('click', () => {
+            const panel = item.querySelector('.jm-bullet-skills-panel');
+            const btn = item.querySelector('.jm-bullet-skills-btn');
+            panel.classList.toggle('jm-open');
+            btn.classList.toggle('jm-active');
+          });
+
+          // Skill chip toggle (click to include/exclude)
+          item.querySelectorAll('.jm-skill-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+              chip.classList.toggle('jm-excluded-skill');
+            });
+          });
+
+          // Copy button
           item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
             const currentText = item.querySelector('.jm-bullet-after').textContent;
             navigator.clipboard.writeText(currentText).then(() => {
@@ -3581,6 +3620,8 @@
               setTimeout(() => { cb.textContent = 'Copy'; }, 1500);
             }).catch(() => {});
           });
+
+          // Regenerate — uses only the included skills for this bullet
           item.querySelector('.jm-bullet-refresh').addEventListener('click', async (e) => {
             const refreshBtn = e.currentTarget;
             refreshBtn.disabled = true;
@@ -3589,12 +3630,17 @@
               const jd = extractJobDescription();
               const original = item.querySelector('.jm-bullet-before').textContent;
               const currentEdit = item.querySelector('.jm-bullet-after').textContent.trim();
+              // Get only the included (non-excluded) skills for this bullet
+              const bulletSkills = [];
+              item.querySelectorAll('.jm-skill-chip:not(.jm-excluded-skill)').forEach(chip => {
+                bulletSkills.push(chip.dataset.skill);
+              });
               const newBullet = await sendMessage({
                 type: 'REWRITE_SINGLE_BULLET',
                 originalBullet: original,
                 currentEdit: currentEdit !== original ? currentEdit : '',
                 jobDescription: jd,
-                missingSkills: currentAnalysis.missingSkills || []
+                missingSkills: bulletSkills
               });
               item.querySelector('.jm-bullet-after').textContent = newBullet;
             } catch (err) {
