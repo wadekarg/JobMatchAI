@@ -58,6 +58,7 @@ import {
   buildCoverLetterPrompt,   // Builds the prompt that writes a tailored cover letter
   buildBulletRewritePrompt, // Builds the prompt that rewrites resume bullets to target a specific JD
   buildSingleBulletRewritePrompt, // Builds the prompt to regenerate a single bullet
+  buildCustomBulletPrompt, // Builds the prompt to create a new bullet from a description
   buildTestPrompt,          // Builds a minimal "ping" prompt used to validate AI connectivity
   DEFAULT_MODEL,        // Fallback model identifier when the user has not configured one
   DEFAULT_TEMPERATURE,  // Fallback temperature value (typically 0 or 0.7)
@@ -608,9 +609,10 @@ function normalizeForMatch(str) {
  * @async
  * @param {Array}    rewrittenBullets - Array of {original, improved} objects.
  * @param {string[]} missingSkills    - Skills identified as gaps.
- * @returns {Promise<{base64: string, replacedCount: number, totalBullets: number}>}
+ * @param {Array}    [customBullets]  - Array of {text, targetSection, targetIdx} for new bullets.
+ * @returns {Promise<{base64: string, replacedCount: number, totalBullets: number, insertedCount: number}>}
  */
-async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
+async function handleGenerateTailoredResume(rewrittenBullets, missingSkills, customBullets) {
   const profile = await getProfile();
   if (!profile) throw new Error('No resume profile found. Upload your resume first.');
 
@@ -686,6 +688,57 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
     }
   }
 
+  // Insert custom bullets after the last bullet of their target job/project
+  let insertedCount = 0;
+  if (customBullets && customBullets.length > 0 && profile.experience) {
+    for (const custom of customBullets) {
+      // Find the target job's title and company to locate it in the DOCX
+      let targetText = '';
+      if (custom.targetSection === 'experience' && profile.experience[custom.targetIdx]) {
+        const exp = profile.experience[custom.targetIdx];
+        targetText = (exp.company || exp.title || '').toLowerCase();
+      } else if (custom.targetSection === 'projects' && profile.projects?.[custom.targetIdx]) {
+        const proj = profile.projects[custom.targetIdx];
+        targetText = (proj.name || proj.title || '').toLowerCase();
+      }
+
+      if (!targetText || !custom.text) continue;
+
+      // Find paragraphs belonging to this job by looking for the company/title,
+      // then find the last content paragraph in that section
+      const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+      let lastMatchIdx = -1;
+      let lastMatchEnd = -1;
+      let foundTarget = false;
+      let match;
+
+      while ((match = paragraphRegex.exec(docXml)) !== null) {
+        const paraText = extractParagraphText(match[0]).toLowerCase();
+        if (paraText.includes(targetText)) {
+          foundTarget = true;
+        }
+        if (foundTarget && paraText.length > 10) {
+          lastMatchIdx = match.index;
+          lastMatchEnd = match.index + match[0].length;
+        }
+        // Stop if we hit a new section header (short text after finding content)
+        if (foundTarget && paraText.length > 0 && paraText.length <= 5 && lastMatchIdx !== -1) {
+          break;
+        }
+      }
+
+      if (lastMatchIdx !== -1) {
+        // Get the last paragraph to clone its formatting
+        const lastPara = docXml.substring(lastMatchIdx, lastMatchEnd);
+        // Create new paragraph with same formatting but new text
+        const newPara = replaceParagraphText(lastPara, custom.text);
+        // Insert after the last paragraph of this section
+        docXml = docXml.substring(0, lastMatchEnd) + newPara + docXml.substring(lastMatchEnd);
+        insertedCount++;
+      }
+    }
+  }
+
   // Save modified XML and generate DOCX
   zip.file('word/document.xml', docXml);
   const modifiedDocx = await zip.generateAsync({ type: 'base64' });
@@ -694,6 +747,7 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills) {
     base64: modifiedDocx,
     replacedCount,
     totalBullets: rewrittenBullets.length,
+    insertedCount,
     originalFileName: profile.resumeFileName || 'resume'
   };
 }
@@ -835,7 +889,19 @@ const handlers = {
     return result.trim();
   },
 
-  'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.rewrittenBullets, msg.missingSkills),
+  'GENERATE_TAILORED_RESUME': (msg) => handleGenerateTailoredResume(msg.rewrittenBullets, msg.missingSkills, msg.customBullets),
+
+  'GENERATE_CUSTOM_BULLET': async (msg) => {
+    const settings = await getSettings();
+    if (!settings.apiKey) throw new Error('No API key configured.');
+    const messages = buildCustomBulletPrompt(msg.description, msg.targetRole, msg.jobDescription, msg.missingSkills);
+    const result = await callAI(settings.provider, settings.apiKey, messages, {
+      model: settings.model,
+      temperature: 0.3,
+      maxTokens: 512
+    });
+    return result.trim();
+  },
 
   'INCREMENT_RESUME_COUNTER': async () => {
     const { tailoredResumeCounter = 0 } = await chrome.storage.local.get('tailoredResumeCounter');

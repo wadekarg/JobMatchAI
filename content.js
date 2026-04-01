@@ -795,6 +795,18 @@
       .jm-skill-chip { font-size: 11px; padding: 3px 8px; border-radius: 12px; cursor: pointer; border: 1px solid var(--jm-primary); color: var(--jm-primary); background: var(--jm-primary)/8; transition: all 0.15s; user-select: none; }
       .jm-skill-chip:hover { opacity: 0.8; }
       .jm-skill-chip.jm-excluded-skill { border-color: var(--jm-border); color: var(--jm-text-muted); background: transparent; text-decoration: line-through; opacity: 0.5; }
+      .jm-add-bullet-area { margin-top: 12px; padding: 12px; border: 1px dashed var(--jm-border); border-radius: 8px; background: var(--jm-card-bg); }
+      .jm-add-bullet-area.jm-open { border-style: solid; border-color: var(--jm-primary); }
+      .jm-add-bullet-trigger { width: 100%; padding: 8px; border: none; background: none; color: var(--jm-primary); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+      .jm-add-bullet-trigger:hover { text-decoration: underline; }
+      .jm-add-bullet-form { display: none; }
+      .jm-add-bullet-form.jm-open { display: block; }
+      .jm-add-bullet-select { width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid var(--jm-border); border-radius: 6px; background: var(--jm-card-bg); color: var(--jm-text); margin-bottom: 8px; }
+      .jm-add-bullet-input { width: 100%; padding: 8px; font-size: 12px; border: 1px solid var(--jm-border); border-radius: 6px; background: var(--jm-card-bg); color: var(--jm-text); resize: vertical; min-height: 50px; font-family: inherit; outline: none; }
+      .jm-add-bullet-input:focus { border-color: var(--jm-primary); }
+      .jm-add-bullet-actions { display: flex; gap: 6px; margin-top: 8px; }
+      .jm-bullet-item.jm-custom-bullet { border-left: 3px solid var(--jm-primary); }
+      .jm-bullet-custom-tag { font-size: 9px; background: var(--jm-primary); color: white; padding: 1px 6px; border-radius: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
       .jm-bullet-actions { display: flex; gap: 6px; align-items: center; }
       .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
       .jm-bullet-refresh { font-size: 11px; padding: 3px 8px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; }
@@ -1086,6 +1098,19 @@
         <div class="jm-section" id="jmBulletSection" style="display:none">
           <h3>Improved Resume Bullets</h3>
           <div id="jmBulletList"></div>
+          <div class="jm-add-bullet-area" id="jmAddBulletArea" style="display:none;">
+            <button class="jm-add-bullet-trigger" id="jmAddBulletTrigger">+ Add Custom Bullet</button>
+            <div class="jm-add-bullet-form" id="jmAddBulletForm">
+              <label style="font-size:11px;font-weight:600;color:var(--jm-text-secondary);display:block;margin-bottom:4px;">Add under:</label>
+              <select class="jm-add-bullet-select" id="jmAddBulletTarget"></select>
+              <label style="font-size:11px;font-weight:600;color:var(--jm-text-secondary);display:block;margin-bottom:4px;">Describe what you did:</label>
+              <textarea class="jm-add-bullet-input" id="jmAddBulletInput" placeholder="e.g. built a dashboard for tracking sales metrics using React and D3..."></textarea>
+              <div class="jm-add-bullet-actions">
+                <button class="jm-btn jm-btn-primary" id="jmAddBulletGenerate" style="font-size:11px;padding:5px 14px;">Generate</button>
+                <button class="jm-btn jm-btn-secondary" id="jmAddBulletCancel" style="font-size:11px;padding:5px 14px;">Cancel</button>
+              </div>
+            </div>
+          </div>
           <button class="jm-btn jm-btn-outline" id="jmTailoredResumeBtnBottom" style="display:none;margin-top:10px;width:100%;">&#128196; Generate Tailored Resume</button>
         </div>
 
@@ -1125,6 +1150,24 @@
     panel.querySelector('#jmRewriteBulletsBtn').addEventListener('click', rewriteBullets);
     panel.querySelector('#jmTailoredResumeBtn').addEventListener('click', generateTailoredResume);
     panel.querySelector('#jmTailoredResumeBtnBottom').addEventListener('click', generateTailoredResume);
+
+    // Add custom bullet UI
+    panel.querySelector('#jmAddBulletTrigger').addEventListener('click', () => {
+      const form = shadowRoot.getElementById('jmAddBulletForm');
+      const area = shadowRoot.getElementById('jmAddBulletArea');
+      const trigger = shadowRoot.getElementById('jmAddBulletTrigger');
+      form.classList.add('jm-open');
+      area.classList.add('jm-open');
+      trigger.style.display = 'none';
+      populateAddBulletDropdown();
+    });
+    panel.querySelector('#jmAddBulletCancel').addEventListener('click', () => {
+      shadowRoot.getElementById('jmAddBulletForm').classList.remove('jm-open');
+      shadowRoot.getElementById('jmAddBulletArea').classList.remove('jm-open');
+      shadowRoot.getElementById('jmAddBulletTrigger').style.display = '';
+      shadowRoot.getElementById('jmAddBulletInput').value = '';
+    });
+    panel.querySelector('#jmAddBulletGenerate').addEventListener('click', generateCustomBullet);
     panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
     panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
@@ -3652,7 +3695,8 @@
           });
           list.appendChild(item);
         });
-        // Show the bottom "Generate Tailored Resume" button
+        // Show add custom bullet area and bottom generate button
+        shadowRoot.getElementById('jmAddBulletArea').style.display = 'block';
         shadowRoot.getElementById('jmTailoredResumeBtnBottom').style.display = 'flex';
       }
     } catch (err) {
@@ -3684,20 +3728,33 @@
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
 
-      // Collect only CHECKED rewritten bullets from the UI
+      // Collect only CHECKED bullets from the UI (both rewritten and custom)
       const bulletItems = shadowRoot.querySelectorAll('.jm-bullet-item');
       const rewrittenBullets = [];
+      const customBullets = [];
       bulletItems.forEach(item => {
         const checkbox = item.querySelector('.jm-bullet-toggle');
-        if (!checkbox || !checkbox.checked) return; // Skip excluded bullets
-        const original = item.querySelector('.jm-bullet-before')?.textContent || '';
+        if (!checkbox || !checkbox.checked) return;
         const improved = item.querySelector('.jm-bullet-after')?.textContent || '';
-        if (original && improved && original !== improved) {
-          rewrittenBullets.push({ original, improved });
+        if (!improved) return;
+
+        if (item.classList.contains('jm-custom-bullet')) {
+          // Custom bullet — needs to be inserted, not replaced
+          customBullets.push({
+            text: improved,
+            targetSection: item.dataset.targetSection || '',
+            targetIdx: parseInt(item.dataset.targetIdx || '0', 10),
+          });
+        } else {
+          // Rewritten bullet — replaces existing text
+          const original = item.querySelector('.jm-bullet-before')?.textContent || '';
+          if (original && original !== improved) {
+            rewrittenBullets.push({ original, improved });
+          }
         }
       });
 
-      if (rewrittenBullets.length === 0) {
+      if (rewrittenBullets.length === 0 && customBullets.length === 0) {
         throw new Error('No bullets selected. Click "Improve Resume Bullets" first and check the ones you want to include.');
       }
 
@@ -3707,6 +3764,7 @@
       const result = await sendMessage({
         type: 'GENERATE_TAILORED_RESUME',
         rewrittenBullets,
+        customBullets,
         missingSkills: currentAnalysis.missingSkills || []
       });
 
@@ -3739,7 +3797,8 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
+      const insertedInfo = result.insertedCount > 0 ? `, inserted <strong>${result.insertedCount}</strong> new` : '';
+      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} bullets${insertedInfo}. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
       status.style.color = 'var(--jm-success, #16a34a)';
       if (result.replacedCount < result.totalBullets) {
         status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
@@ -3757,6 +3816,164 @@
       scrollPanelTo(section);
       btn.disabled = false;
       btn.innerHTML = '&#128196; Generate Tailored Resume';
+    }
+  }
+
+  // ─── Custom bullet generator ─────────────────────────────────
+
+  /**
+   * Populates the "Add under" dropdown with jobs and projects from the user's profile.
+   */
+  async function populateAddBulletDropdown() {
+    const select = shadowRoot.getElementById('jmAddBulletTarget');
+    select.innerHTML = '';
+    try {
+      const profile = await sendMessage({ type: 'GET_PROFILE' });
+      if (profile?.experience) {
+        profile.experience.forEach((exp, i) => {
+          const opt = document.createElement('option');
+          opt.value = `exp_${i}`;
+          opt.textContent = `${exp.title || 'Role'} at ${exp.company || 'Company'}`;
+          opt.dataset.section = 'experience';
+          opt.dataset.idx = String(i);
+          select.appendChild(opt);
+        });
+      }
+      if (profile?.projects) {
+        profile.projects.forEach((proj, i) => {
+          const opt = document.createElement('option');
+          opt.value = `proj_${i}`;
+          opt.textContent = `Project: ${proj.name || proj.title || 'Untitled'}`;
+          opt.dataset.section = 'projects';
+          opt.dataset.idx = String(i);
+          select.appendChild(opt);
+        });
+      }
+    } catch (_) {
+      const opt = document.createElement('option');
+      opt.textContent = 'Could not load profile';
+      select.appendChild(opt);
+    }
+  }
+
+  /**
+   * Generates a polished bullet from the user's rough description using AI,
+   * then adds it to the bullet list as a custom bullet tagged with the selected job/project.
+   */
+  async function generateCustomBullet() {
+    const input = shadowRoot.getElementById('jmAddBulletInput');
+    const select = shadowRoot.getElementById('jmAddBulletTarget');
+    const genBtn = shadowRoot.getElementById('jmAddBulletGenerate');
+    const description = input.value.trim();
+
+    if (!description) return;
+
+    genBtn.disabled = true;
+    genBtn.textContent = 'Generating...';
+
+    try {
+      const jd = extractJobDescription();
+      const selectedOption = select.options[select.selectedIndex];
+      const targetLabel = selectedOption?.textContent || 'Unknown';
+
+      const polishedBullet = await sendMessage({
+        type: 'GENERATE_CUSTOM_BULLET',
+        description,
+        targetRole: targetLabel,
+        jobDescription: jd,
+        missingSkills: currentAnalysis?.missingSkills || []
+      });
+
+      // Create a new bullet item in the list
+      const list = shadowRoot.getElementById('jmBulletList');
+      const item = document.createElement('div');
+      item.className = 'jm-bullet-item jm-custom-bullet';
+      // Store the target info for DOCX insertion
+      item.dataset.customTarget = selectedOption?.value || '';
+      item.dataset.targetSection = selectedOption?.dataset.section || '';
+      item.dataset.targetIdx = selectedOption?.dataset.idx || '';
+
+      const missingSkills = currentAnalysis?.missingSkills || [];
+      const skillChipsHtml = missingSkills.map(s =>
+        `<span class="jm-skill-chip" data-skill="${escapeHTML(s)}">${escapeHTML(s)}</span>`
+      ).join('');
+
+      item.innerHTML = `
+        <div class="jm-bullet-header">
+          <span class="jm-bullet-toggle-wrap" data-tip="Uncheck to exclude from tailored resume"><input type="checkbox" class="jm-bullet-toggle" checked></span>
+          <div class="jm-bullet-job">${escapeHTML(targetLabel)}</div>
+          <span class="jm-bullet-custom-tag">New</span>
+          <button class="jm-bullet-skills-btn" title="Manage missing skills for this bullet">Skills</button>
+        </div>
+        <div class="jm-bullet-skills-panel">
+          <div class="jm-bullet-skills-label">Missing skills to include (click to exclude)</div>
+          <div class="jm-bullet-skills-list">${skillChipsHtml}</div>
+        </div>
+        <div class="jm-bullet-before" style="text-decoration:none;color:var(--jm-text-muted);font-style:italic;">${escapeHTML(description)}</div>
+        <div class="jm-bullet-after" contenteditable="true" spellcheck="false" title="Click to edit">${escapeHTML(polishedBullet)}</div>
+        <div class="jm-bullet-actions">
+          <button class="jm-btn jm-btn-secondary jm-bullet-copy">Copy</button>
+          <button class="jm-bullet-refresh" title="Regenerate this bullet">&#8635;</button>
+        </div>`;
+
+      // Wire events (same as regular bullets)
+      item.querySelector('.jm-bullet-toggle').addEventListener('change', (e) => {
+        item.classList.toggle('jm-excluded', !e.target.checked);
+        e.target.closest('.jm-bullet-toggle-wrap').dataset.tip = e.target.checked
+          ? 'Uncheck to exclude from tailored resume'
+          : 'Check to include in tailored resume';
+      });
+      item.querySelector('.jm-bullet-skills-btn').addEventListener('click', () => {
+        item.querySelector('.jm-bullet-skills-panel').classList.toggle('jm-open');
+        item.querySelector('.jm-bullet-skills-btn').classList.toggle('jm-active');
+      });
+      item.querySelectorAll('.jm-skill-chip').forEach(chip => {
+        chip.addEventListener('click', () => chip.classList.toggle('jm-excluded-skill'));
+      });
+      item.querySelector('.jm-bullet-copy').addEventListener('click', () => {
+        navigator.clipboard.writeText(item.querySelector('.jm-bullet-after').textContent).then(() => {
+          const cb = item.querySelector('.jm-bullet-copy');
+          cb.textContent = 'Copied!';
+          setTimeout(() => { cb.textContent = 'Copy'; }, 1500);
+        }).catch(() => {});
+      });
+      item.querySelector('.jm-bullet-refresh').addEventListener('click', async (e) => {
+        const refreshBtn = e.currentTarget;
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('jm-spinning');
+        try {
+          const bulletSkills = [];
+          item.querySelectorAll('.jm-skill-chip:not(.jm-excluded-skill)').forEach(chip => {
+            bulletSkills.push(chip.dataset.skill);
+          });
+          const newBullet = await sendMessage({
+            type: 'GENERATE_CUSTOM_BULLET',
+            description,
+            targetRole: targetLabel,
+            jobDescription: extractJobDescription(),
+            missingSkills: bulletSkills
+          });
+          item.querySelector('.jm-bullet-after').textContent = newBullet;
+        } catch (err) {
+          item.querySelector('.jm-bullet-after').textContent = 'Error: ' + err.message;
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.classList.remove('jm-spinning');
+        }
+      });
+
+      list.appendChild(item);
+
+      // Reset the form
+      input.value = '';
+      shadowRoot.getElementById('jmAddBulletForm').classList.remove('jm-open');
+      shadowRoot.getElementById('jmAddBulletArea').classList.remove('jm-open');
+      shadowRoot.getElementById('jmAddBulletTrigger').style.display = '';
+    } catch (err) {
+      input.value += '\n\nError: ' + err.message;
+    } finally {
+      genBtn.disabled = false;
+      genBtn.textContent = 'Generate';
     }
   }
 
