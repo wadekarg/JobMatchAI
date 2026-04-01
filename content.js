@@ -3560,6 +3560,12 @@
         analysis: {
           matchingSkills: currentAnalysis.matchingSkills,
           matchScore: currentAnalysis.matchScore
+        },
+        jobMeta: {
+          title: currentAnalysis.title || '',
+          company: currentAnalysis.company || '',
+          location: currentAnalysis.location || '',
+          salary: currentAnalysis.salary || ''
         }
       });
       // Support both old string and new object response format

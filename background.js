@@ -482,7 +482,7 @@ async function handleMarkApplied(jobData) {
  * @throws {Error} If no API key is configured or no profile has been uploaded.
  * @returns {Promise<string>} The generated cover letter as a plain text string.
  */
-async function handleGenerateCoverLetter(jobDescription, analysis) {
+async function handleGenerateCoverLetter(jobDescription, analysis, jobMeta) {
   const settings = await getSettings();
   if (!settings.apiKey) throw new Error('No API key configured. Go to Settings.');
   const profile = await getProfile();
@@ -495,7 +495,7 @@ async function handleGenerateCoverLetter(jobDescription, analysis) {
     ? jobDescription.substring(0, maxLen) + '\n...[truncated]'
     : jobDescription;
 
-  const messages = buildCoverLetterPrompt(profile, truncatedJD, analysis);
+  const messages = buildCoverLetterPrompt(profile, truncatedJD, analysis, jobMeta);
   // Return the raw AI string — cover letters are prose, not JSON
   const text = await callAI(settings.provider, settings.apiKey, messages, {
     model: settings.model,
@@ -873,7 +873,7 @@ const handlers = {
 
   'GET_SAVED_JOBS': (msg) => getSavedJobs(),
 
-  'GENERATE_COVER_LETTER': (msg) => handleGenerateCoverLetter(msg.jobDescription, msg.analysis),
+  'GENERATE_COVER_LETTER': (msg) => handleGenerateCoverLetter(msg.jobDescription, msg.analysis, msg.jobMeta),
 
   'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
 
