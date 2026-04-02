@@ -1762,16 +1762,51 @@
   /** @returns {string} The company name extracted from the page, or ''. */
   function extractCompany() {
     const selectors = [
-      '.company-name', '[class*="company"]', '.posting-categories .location',
+      // LinkedIn
       '.jobs-unified-top-card__company-name',
-      '[data-automation-id="company"]'
+      '.job-details-jobs-unified-top-card__company-name a',
+      // Indeed
+      '[data-testid="inlineHeader-companyName"]',
+      '.jobsearch-InlineCompanyRating-companyHeader a',
+      // Glassdoor
+      '[data-test="employer-name"]',
+      // Greenhouse
+      '.company-name',
+      // Lever
+      '.posting-categories .sort-by-team.posting-category:first-child',
+      // Workday
+      '[data-automation-id="company"]',
+      // Generic (more specific than before)
+      '[itemprop="hiringOrganization"] [itemprop="name"]',
+      '.company-name', '.employer-name',
     ];
     for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el && el.innerText.trim().length > 1 && el.innerText.trim().length < 100) {
-        return el.innerText.trim();
-      }
+      try {
+        const el = document.querySelector(sel);
+        if (el) {
+          const text = el.innerText.trim();
+          // Filter out location-like values that aren't company names
+          if (text.length > 1 && text.length < 100 &&
+              !text.toLowerCase().includes('multiple locations') &&
+              !text.toLowerCase().includes('remote') &&
+              !text.match(/^[A-Z]{2},?\s/)) {  // Skip state abbreviations like "CA, US"
+            return text;
+          }
+        }
+      } catch (_) {}
     }
+    // Fallback: try extracting company from the hostname
+    // e.g. "jobs.dell.com" → "Dell", "careers.google.com" → "Google"
+    try {
+      const host = window.location.hostname;
+      const parts = host.split('.');
+      // Look for the main domain (skip jobs/careers subdomains)
+      for (const part of parts) {
+        if (!['jobs', 'careers', 'apply', 'hire', 'www', 'com', 'org', 'net', 'io', 'co'].includes(part) && part.length > 2) {
+          return part.charAt(0).toUpperCase() + part.slice(1);
+        }
+      }
+    } catch (_) {}
     return '';
   }
 

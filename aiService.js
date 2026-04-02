@@ -1120,10 +1120,16 @@ function buildCoverLetterPrompt(resumeData, jobDescription, analysis, jobMeta) {
   // Limit to 6 skills to keep the prompt focused and avoid overwhelming the model.
   const matchingSkills = (analysis?.matchingSkills || []).slice(0, 6).join(', ');
   const meta = jobMeta || {};
+  // Filter out location values that got misidentified as company names
+  const company = (meta.company && !meta.company.toLowerCase().includes('multiple locations')
+    && !meta.company.toLowerCase().includes('remote'))
+    ? meta.company : '';
+  const location = meta.location || '';
+
   const jobMetaBlock = [
     meta.title && `JOB TITLE: ${meta.title}`,
-    meta.company && `COMPANY: ${meta.company}`,
-    meta.location && `LOCATION: ${meta.location}`,
+    company && `COMPANY: ${company}`,
+    location && `LOCATION: ${location} (do NOT use location as the company name)`,
     meta.salary && `SALARY: ${meta.salary}`,
   ].filter(Boolean).join('\n');
 
@@ -1137,6 +1143,8 @@ ${jobMetaBlock ? `IMPORTANT — Use these EXACT values (do NOT guess or infer di
 RULES:
 - Exactly 3 paragraphs: compelling opening (why this role/company), skills + experience match (reference 2-3 specific skills from the resume), closing call to action
 - Use the EXACT company name and job title provided above — do NOT substitute, abbreviate, or guess a different name
+- NEVER use the location (city, state, "Multiple Locations", "Remote") as the company name
+- If no company name is provided, try to identify it from the job description or omit it
 - 200-250 words. No clichés like "I am a hard worker"
 - Do NOT include address headers, date lines, "Dear Hiring Manager", signature, or any [placeholders]
 - Start directly with the first sentence of paragraph one
