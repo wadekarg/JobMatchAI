@@ -1018,6 +1018,7 @@
           <div class="jm-job-meta">
             <span id="jmJobLocation" style="display:none">&#128205; <span id="jmJobLocationText"></span></span>
             <span id="jmJobSalary" style="display:none">&#128176; <span id="jmJobSalaryText"></span></span>
+            <span id="jmJobId" style="display:none">&#128196; <span id="jmJobIdText"></span></span>
           </div>
         </div>
 
@@ -1857,9 +1858,11 @@
       '[data-test="detailSalary"]',
       // Greenhouse / Lever / Workday
       '[data-automation-id="salary"]',
+      // Phenom (Dell, etc)
+      '.job-salary', '.salary-range', '.compensation-range',
       // Generic
       '[class*="salary"]', '[class*="compensation"]', '[class*="pay-range"]',
-      '[data-field="salary"]'
+      '[class*="pay_range"]', '[data-field="salary"]'
     ];
     for (const sel of selectors) {
       try {
@@ -1888,6 +1891,42 @@
     return '';
   }
 
+  /** @returns {string} The job ID/reference number extracted from the page, or ''. */
+  function extractJobId() {
+    // Site-specific selectors
+    const selectors = [
+      // Workday
+      '[data-automation-id="jobID"]',
+      // Generic
+      '[class*="job-id"]', '[class*="jobId"]', '[class*="requisition"]',
+      '[class*="ref-number"]', '[data-field="job-id"]',
+    ];
+    for (const sel of selectors) {
+      try {
+        const el = document.querySelector(sel);
+        if (el) {
+          const text = el.innerText.trim();
+          if (text.length > 1 && text.length < 50) return text;
+        }
+      } catch (_) {}
+    }
+    // Regex fallback: search page text for job ID patterns
+    const bodyText = document.body.innerText || '';
+    const patterns = [
+      /(?:job\s*(?:id|#|number|ref|reference|code)[:\s]*)([\w-]{3,20})/i,
+      /(?:requisition\s*(?:id|#|number)?[:\s]*)([\w-]{3,20})/i,
+      /(?:posting\s*(?:id|#)?[:\s]*)([\w-]{3,20})/i,
+    ];
+    for (const pat of patterns) {
+      const match = bodyText.match(pat);
+      if (match && match[1]) return match[1].trim();
+    }
+    // Try URL path for numeric job IDs
+    const urlMatch = window.location.pathname.match(/\/(\d{5,12})(?:\/|$)/);
+    if (urlMatch) return urlMatch[1];
+    return '';
+  }
+
   // ─── Analyze job ──────────────────────────────────────────────
 
   /**
@@ -1909,7 +1948,7 @@
     const cached = await getCachedAnalysis(pageUrl);
     if (!forceRefresh && cached) {
       currentAnalysis = cached.analysis;
-      showJobMeta(cached.title, cached.company, cached.location, cached.salary);
+      showJobMeta(cached.title, cached.company, cached.location, cached.salary, cached.jobId);
       renderAnalysis(cached.response);
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
       shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
@@ -1931,13 +1970,14 @@
       const company = extractCompany();
       const location = extractLocation();
       const salary = extractSalary();
+      const jobId = extractJobId();
 
       if (jd.length < 50) {
         setStatus('Could not find a job description on this page.', 'error');
         return;
       }
 
-      showJobMeta(title, company, location, salary);
+      showJobMeta(title, company, location, salary, jobId);
 
       // Warn if the extracted JD is too short to produce reliable results,
       // but don't block — the user can still trigger analysis.
@@ -1957,8 +1997,8 @@
         company: company
       });
 
-      currentAnalysis = { ...response, title, company, location, salary, url: pageUrl };
-      await setCachedAnalysis(pageUrl, { response, analysis: currentAnalysis, title, company, location, salary });
+      currentAnalysis = { ...response, title, company, location, salary, jobId, url: pageUrl };
+      await setCachedAnalysis(pageUrl, { response, analysis: currentAnalysis, title, company, location, salary, jobId });
       analysisSucceeded = true;
       renderAnalysis(response);
       clearStatus();
@@ -1996,7 +2036,7 @@
    * @param {string} location - Job location string.
    * @param {string} salary   - Salary/compensation string.
    */
-  function showJobMeta(title, company, location, salary) {
+  function showJobMeta(title, company, location, salary, jobId) {
     const jobInfo = shadowRoot.getElementById('jmJobInfo');
     shadowRoot.getElementById('jmJobTitle').textContent = title;
     shadowRoot.getElementById('jmJobCompany').textContent = company;
@@ -2008,6 +2048,10 @@
     if (salary) {
       shadowRoot.getElementById('jmJobSalaryText').textContent = salary;
       shadowRoot.getElementById('jmJobSalary').style.display = 'inline-flex';
+    }
+    if (jobId) {
+      shadowRoot.getElementById('jmJobIdText').textContent = jobId;
+      shadowRoot.getElementById('jmJobId').style.display = 'inline-flex';
     }
   }
 
