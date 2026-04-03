@@ -1773,8 +1773,21 @@
     return document.title.split('|')[0].split('-')[0].trim();
   }
 
-  /** @returns {string} The company name extracted from the page, or ''. */
+  /**
+   * Extracts company name using multiple strategies in priority order.
+   * @returns {string} The company name, or ''.
+   */
   function extractCompany() {
+    const locationWords = /multiple locations|remote|hybrid|on-?site|united states|worldwide/i;
+    const stateAbbr = /^[A-Z]{2},?\s/;
+
+    function isValidCompany(text) {
+      if (!text || text.length < 2 || text.length > 100) return false;
+      if (locationWords.test(text) || stateAbbr.test(text)) return false;
+      return true;
+    }
+
+    // ── Strategy 1: Site-specific CSS selectors ──
     const selectors = [
       // LinkedIn
       '.jobs-unified-top-card__company-name',
@@ -1790,37 +1803,78 @@
       '.posting-categories .sort-by-team.posting-category:first-child',
       // Workday
       '[data-automation-id="company"]',
-      // Generic (more specific than before)
+      // Phenom (Dell, etc.)
+      '.job-company', '[data-ph-at-id="company-name"]',
+      // Schema.org structured data
       '[itemprop="hiringOrganization"] [itemprop="name"]',
+      // Generic
       '.company-name', '.employer-name',
     ];
     for (const sel of selectors) {
       try {
         const el = document.querySelector(sel);
-        if (el) {
-          const text = el.innerText.trim();
-          // Filter out location-like values that aren't company names
-          if (text.length > 1 && text.length < 100 &&
-              !text.toLowerCase().includes('multiple locations') &&
-              !text.toLowerCase().includes('remote') &&
-              !text.match(/^[A-Z]{2},?\s/)) {  // Skip state abbreviations like "CA, US"
-            return text;
-          }
+        if (el && isValidCompany(el.innerText.trim())) {
+          return el.innerText.trim();
         }
       } catch (_) {}
     }
-    // Fallback: try extracting company from the hostname
-    // e.g. "jobs.dell.com" → "Dell", "careers.google.com" → "Google"
+
+    // ── Strategy 2: JSON-LD structured data (schema.org) ──
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of scripts) {
+        const data = JSON.parse(script.textContent);
+        const org = data?.hiringOrganization?.name
+          || data?.employerOverview?.name
+          || (Array.isArray(data) && data.find(d => d['@type'] === 'JobPosting')?.hiringOrganization?.name);
+        if (org && isValidCompany(org)) return org;
+      }
+    } catch (_) {}
+
+    // ── Strategy 3: <meta> tags ──
+    try {
+      const ogSiteName = document.querySelector('meta[property="og:site_name"]')?.content;
+      if (ogSiteName && isValidCompany(ogSiteName) && !ogSiteName.toLowerCase().includes('greenhouse')
+          && !ogSiteName.toLowerCase().includes('lever') && !ogSiteName.toLowerCase().includes('workday')) {
+        return ogSiteName;
+      }
+    } catch (_) {}
+
+    // ── Strategy 4: Page title pattern matching ──
+    // Many job pages: "Job Title - Company Name" or "Job Title | Company Name" or "Job Title at Company"
+    try {
+      const title = document.title;
+      // "at Company" pattern
+      const atMatch = title.match(/\bat\s+([A-Z][A-Za-z0-9\s&.,']+?)(?:\s*[-|]|\s*$)/);
+      if (atMatch && isValidCompany(atMatch[1].trim())) return atMatch[1].trim();
+      // "Title - Company" or "Title | Company" (take the LAST segment)
+      const parts = title.split(/\s*[-|]\s*/);
+      if (parts.length >= 2) {
+        // Try last part first, then second part
+        for (let i = parts.length - 1; i >= 1; i--) {
+          const candidate = parts[i].trim();
+          // Skip common non-company suffixes
+          if (/careers|jobs|apply|hiring|job board|greenhouse|lever|workday/i.test(candidate)) continue;
+          if (isValidCompany(candidate) && candidate.length > 2 && candidate.length < 50) {
+            return candidate;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // ── Strategy 5: Hostname extraction ──
     try {
       const host = window.location.hostname;
       const parts = host.split('.');
-      // Look for the main domain (skip jobs/careers subdomains)
+      const skip = new Set(['jobs', 'careers', 'apply', 'hire', 'www', 'com', 'org', 'net', 'io', 'co', 'uk', 'boards', 'app']);
       for (const part of parts) {
-        if (!['jobs', 'careers', 'apply', 'hire', 'www', 'com', 'org', 'net', 'io', 'co'].includes(part) && part.length > 2) {
+        if (!skip.has(part) && part.length > 2) {
+          // Capitalize first letter
           return part.charAt(0).toUpperCase() + part.slice(1);
         }
       }
     } catch (_) {}
+
     return '';
   }
 
