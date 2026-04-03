@@ -3241,116 +3241,130 @@
   }
 
   /**
-   * Post-fill verification: re-reads every filled field's actual DOM value
-   * and compares against saved Q&A using semantic synonym matching.
-   * If a mismatch is detected (e.g., "Woman" filled but Q&A says "Male"),
-   * corrects the field to match the user's Q&A answer.
+   * Post-fill verification: scans ALL select elements and radio groups
+   * on the page. If any selected value conflicts with the user's Q&A
+   * answers (using synonym matching), corrects it.
+   *
+   * This is intentionally brute-force — it doesn't try to match field
+   * labels. Instead it checks: "is the currently selected value in a
+   * demographic synonym group that conflicts with a Q&A answer?"
    */
   async function verifyAndCorrectFills() {
     try {
       const qaData = await sendMessage({ type: 'GET_QA_LIST' });
       if (!qaData || qaData.length === 0) return;
 
-      // Build keyword map for matching field labels to Q&A questions
-      const keywordPairs = [
-        ['gender', 'gender'], ['gender identity', 'gender identity'],
-        ['sex', 'gender'],
-        ['race', 'race'], ['ethnicity', 'ethnic'], ['ethnic', 'ethnic'],
-        ['hispanic', 'hispanic'], ['latino', 'hispanic'],
-        ['veteran', 'veteran'], ['military', 'veteran'],
-        ['disability', 'disability'], ['disabled', 'disability'],
-        ['pronoun', 'pronoun'],
-        ['sexual orientation', 'orientation'], ['orientation', 'orientation'],
-        ['first name', 'first name'], ['last name', 'last name'],
-        ['email', 'email'], ['phone', 'phone'],
-        ['city', 'city'], ['state', 'state'], ['zip', 'zip'],
-        ['country', 'country'],
-      ];
+      // Build a map of synonym group → user's Q&A answer
+      // e.g., if Q&A has Gender="Male", then the "male" group maps to "Male"
+      const qaByGroup = new Map();
+      const demographicQaKeys = ['gender', 'gender identity', 'sex', 'race', 'ethnicity',
+        'hispanic', 'veteran', 'disability', 'pronoun', 'sexual orientation'];
+
+      for (const qa of qaData) {
+        if (!qa.answer) continue;
+        const qLower = qa.question.toLowerCase();
+        if (!demographicQaKeys.some(k => qLower.includes(k))) continue;
+
+        const savedGroup = _findSynonymGroup(qa.answer.toLowerCase());
+        if (savedGroup) {
+          // Store: this synonym group → the user wants this answer
+          qaByGroup.set(savedGroup, qa.answer);
+        }
+      }
+
+      if (qaByGroup.size === 0) return;
 
       let corrections = 0;
 
-      for (const [qid, ref] of Object.entries(_fieldMap)) {
-        if (!ref || !ref.el) continue;
-        const fieldLabel = (ref.questionText || qid || '').toLowerCase();
+      // Scan ALL <select> elements on the page
+      document.querySelectorAll('select').forEach(sel => {
+        const selectedText = sel.options?.[sel.selectedIndex]?.text?.trim().toLowerCase() || '';
+        if (!selectedText) return;
 
-        // Find matching Q&A entry
-        let qaMatch = null;
-        for (const [fieldKey, qaKey] of keywordPairs) {
-          if (fieldLabel.includes(fieldKey)) {
-            qaMatch = qaData.find(qa => qa.answer && qa.question.toLowerCase().includes(qaKey));
-            if (qaMatch) break;
-          }
-        }
-        if (!qaMatch) continue;
+        const currentGroup = _findSynonymGroup(selectedText);
+        if (!currentGroup) return;
 
-        // Read actual DOM value (re-read fresh, not cached)
-        let currentVal = '';
-        if (ref.type === 'dropdown') {
-          const sel = ref.el;
-          currentVal = sel.options?.[sel.selectedIndex]?.text || sel.value || '';
-        } else if (ref.type === 'radio' && ref.radios) {
-          const checked = ref.radios.find(r => r.el?.checked);
-          currentVal = checked?.label || checked?.value || '';
-        } else {
-          currentVal = ref.el.value || '';
-        }
+        // Check if this value conflicts with any Q&A answer
+        for (const [savedGroup, savedAnswer] of qaByGroup) {
+          // Same category type? (both are gender groups, both are race groups, etc.)
+          // We check by seeing if the current and saved are in DIFFERENT groups
+          // but the same "category" (gender-related, race-related, etc.)
+          if (currentGroup === savedGroup) continue; // same group = correct
 
-        currentVal = currentVal.trim().toLowerCase();
-        const savedVal = qaMatch.answer.trim().toLowerCase();
-        if (!currentVal || !savedVal) continue;
+          // Check if they're in the same category (e.g., both gender-related)
+          const genderGroups = _synonymGroups.slice(0, 3); // male, female, non-binary
+          const raceGroups = _synonymGroups.slice(7, 11);  // white, black, asian, hispanic
+          const orientationGroups = _synonymGroups.slice(11, 13); // straight, gay
 
-        // Check if values are semantically the same
-        const savedGroup = _findSynonymGroup(savedVal);
-        const currentGroup = _findSynonymGroup(currentVal);
+          const currentInGender = genderGroups.includes(currentGroup);
+          const savedInGender = genderGroups.includes(savedGroup);
+          const currentInRace = raceGroups.includes(currentGroup);
+          const savedInRace = raceGroups.includes(savedGroup);
+          const currentInOrientation = orientationGroups.includes(currentGroup);
+          const savedInOrientation = orientationGroups.includes(savedGroup);
 
-        // Mismatch: different synonym groups, OR saved has a value but current doesn't match
-        const isMismatch = savedGroup && currentGroup && savedGroup !== currentGroup;
-        // Also check exact mismatch for non-synonym fields (name, email, etc.)
-        const isExactMismatch = !savedGroup && !currentGroup && currentVal !== savedVal &&
-          ['first name', 'last name', 'email', 'phone'].some(k => fieldLabel.includes(k));
+          const sameCategory = (currentInGender && savedInGender) ||
+                               (currentInRace && savedInRace) ||
+                               (currentInOrientation && savedInOrientation);
 
-        if (isMismatch || isExactMismatch) {
-          console.log(`[JobMatch AI] Verification fix: "${fieldLabel}" was "${currentVal}", correcting to "${savedVal}"`);
-
-          if (ref.type === 'dropdown' && ref.optionTexts) {
-            // Find the best matching option using synonym group
-            let correctOption = null;
-            if (savedGroup) {
-              correctOption = ref.optionTexts.find(o =>
-                savedGroup.some(s => o.toLowerCase().includes(s))
-              );
-            }
-            // Fallback: try direct match
-            if (!correctOption) {
-              correctOption = ref.optionTexts.find(o =>
-                o.toLowerCase().includes(savedVal) || savedVal.includes(o.toLowerCase())
-              );
-            }
+          if (sameCategory) {
+            // WRONG — find the correct option and select it
+            const correctOption = Array.from(sel.options).find(o => {
+              const oText = o.text.trim().toLowerCase();
+              return savedGroup.some(s => oText.includes(s));
+            });
             if (correctOption) {
-              fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
+              console.log(`[JobMatch AI] Verification fix: select was "${selectedText}", correcting to "${correctOption.text}" (Q&A: "${savedAnswer}")`);
+              sel.value = correctOption.value;
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
               corrections++;
             }
-          } else if (ref.type === 'radio' && ref.radios) {
-            // Find radio that matches saved answer
-            let matched = false;
-            if (savedGroup) {
-              for (const r of ref.radios) {
-                const rLabel = (r.label || r.value || '').toLowerCase();
-                if (savedGroup.some(s => rLabel.includes(s))) {
-                  r.el.checked = true;
-                  fireEvents(r.el);
-                  matched = true;
-                  break;
-                }
-              }
+            break;
+          }
+        }
+      });
+
+      // Scan ALL radio button groups
+      const radioGroups = {};
+      document.querySelectorAll('input[type="radio"]').forEach(radio => {
+        const name = radio.name;
+        if (!name) return;
+        if (!radioGroups[name]) radioGroups[name] = [];
+        radioGroups[name].push(radio);
+      });
+
+      for (const [name, radios] of Object.entries(radioGroups)) {
+        const checked = radios.find(r => r.checked);
+        if (!checked) continue;
+        const label = (checked.labels?.[0]?.textContent || checked.value || '').trim().toLowerCase();
+        const currentGroup = _findSynonymGroup(label);
+        if (!currentGroup) continue;
+
+        for (const [savedGroup, savedAnswer] of qaByGroup) {
+          if (currentGroup === savedGroup) continue;
+
+          const genderGroups = _synonymGroups.slice(0, 3);
+          const raceGroups = _synonymGroups.slice(7, 11);
+          const orientationGroups = _synonymGroups.slice(11, 13);
+
+          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
+                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
+                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
+
+          if (sameCategory) {
+            const correctRadio = radios.find(r => {
+              const rLabel = (r.labels?.[0]?.textContent || r.value || '').trim().toLowerCase();
+              return savedGroup.some(s => rLabel.includes(s));
+            });
+            if (correctRadio) {
+              console.log(`[JobMatch AI] Verification fix: radio was "${label}", correcting to "${correctRadio.labels?.[0]?.textContent || correctRadio.value}" (Q&A: "${savedAnswer}")`);
+              correctRadio.checked = true;
+              correctRadio.dispatchEvent(new Event('change', { bubbles: true }));
+              correctRadio.dispatchEvent(new Event('input', { bubbles: true }));
+              corrections++;
             }
-            if (!matched) {
-              fillRadioFromRef(ref.radios, qaMatch.answer);
-            }
-            corrections++;
-          } else {
-            fillInput(ref.el, qaMatch.answer);
-            corrections++;
+            break;
           }
         }
       }
