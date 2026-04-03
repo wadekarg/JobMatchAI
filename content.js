@@ -3437,10 +3437,12 @@
         }
       }
 
-      // FINAL PASS: Brute-force scan ALL <select> elements in the ENTIRE document
-      // including ones not in _fieldMap. This catches Greenhouse EEO selects that
-      // detectFormFields() missed.
-      console.log('[JobMatch AI] Verification: final brute-force scan of all selects...');
+      // FINAL PASS: Brute-force scan ALL form elements in the ENTIRE document
+      // including ones not in _fieldMap.
+      console.log('[JobMatch AI] Verification: final brute-force scan...');
+
+      // Scan native <select> elements
+      console.log(`[JobMatch AI] Verification: found ${document.querySelectorAll('select').length} native selects`);
       document.querySelectorAll('select').forEach(sel => {
         const selectedIdx = sel.selectedIndex;
         if (selectedIdx < 0) return;
@@ -3477,12 +3479,31 @@
         }
       });
 
-      // Also scan for React Select / custom dropdowns showing wrong values
-      document.querySelectorAll('[class*="select__single-value"], [class*="selected-value"], [class*="Select-value-label"]').forEach(display => {
-        const text = (display.textContent || '').trim().toLowerCase();
-        if (!text || text.length > 80) return;
+      // Scan for React Select / custom dropdown components
+      // Greenhouse uses react-select which renders as:
+      //   <div class="css-*"> (container)
+      //     <div class="css-*"> (control)
+      //       <div class="css-*"> (single-value or placeholder)
+      // We scan ALL elements that could show a selected demographic value
+      const reactSelectSelectors = [
+        '[class*="single-value"]',        // react-select v5+
+        '[class*="singleValue"]',         // react-select camelCase
+        '[class*="Select-value-label"]',  // react-select v1
+        '[class*="selected-value"]',      // generic
+        '[class*="select__value"]',       // BEM style
+        '[role="combobox"]',              // ARIA combobox
+      ];
+      const allDisplayEls = document.querySelectorAll(reactSelectSelectors.join(', '));
+      console.log(`[JobMatch AI] Verification: found ${allDisplayEls.length} React Select display elements`);
 
-        const currentGroup = _findSynonymGroup(text);
+      allDisplayEls.forEach(display => {
+        const text = (display.textContent || '').trim();
+        const textLower = text.toLowerCase();
+        if (!textLower || textLower.length > 80 || textLower === 'select...' || textLower === 'select') return;
+
+        console.log(`[JobMatch AI] Verification: React Select shows "${text}"`);
+
+        const currentGroup = _findSynonymGroup(textLower);
         if (!currentGroup) return;
 
         for (const [savedGroup, savedAnswer] of qaByGroup) {
@@ -3496,23 +3517,47 @@
                                (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
 
           if (sameCategory) {
-            console.log(`[JobMatch AI] BRUTE FORCE: found custom dropdown showing "${text}", Q&A wants "${savedAnswer}". Attempting to click and select...`);
-            // Try to find the hidden <select> or <input> nearby
-            const container = display.closest('[class*="select"], [class*="dropdown"]');
+            console.log(`[JobMatch AI] REACT SELECT FIX: "${text}" conflicts with Q&A "${savedAnswer}". Attempting correction...`);
+
+            // Strategy: click the container to open the dropdown, then find and click the right option
+            const container = display.closest('[class*="select"], [class*="Select"], [class*="css-"]')
+              || display.parentElement?.parentElement;
+
             if (container) {
-              const hiddenSelect = container.querySelector('select');
-              if (hiddenSelect) {
-                const correctOpt = Array.from(hiddenSelect.options).find(o =>
-                  savedGroup.some(s => o.text.trim().toLowerCase().includes(s))
-                );
-                if (correctOpt) {
-                  hiddenSelect.value = correctOpt.value;
-                  hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                  // Also update the visible display
-                  display.textContent = correctOpt.text;
-                  corrections++;
+              // Try to find the input element inside the react-select to type into
+              const input = container.querySelector('input[role="combobox"], input[type="text"], input');
+              const control = container.querySelector('[class*="control"], [class*="Control"]') || container;
+
+              // Click to open
+              control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+              control.click();
+
+              // Wait briefly for options to render, then find and click the right one
+              setTimeout(() => {
+                // Look for option elements
+                const optionSelectors = '[role="option"], [class*="option"], [class*="Option"]';
+                const options = document.querySelectorAll(optionSelectors);
+                console.log(`[JobMatch AI] React Select: found ${options.length} options after opening`);
+
+                let found = false;
+                options.forEach(opt => {
+                  if (found) return;
+                  const optText = opt.textContent.trim().toLowerCase();
+                  if (savedGroup.some(s => optText.includes(s))) {
+                    console.log(`[JobMatch AI] React Select: clicking option "${opt.textContent.trim()}"`);
+                    opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    opt.click();
+                    corrections++;
+                    found = true;
+                  }
+                });
+
+                if (!found) {
+                  // Close the dropdown if we couldn't find the right option
+                  document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                  console.log('[JobMatch AI] React Select: could not find matching option');
                 }
-              }
+              }, 300);
             }
             break;
           }
