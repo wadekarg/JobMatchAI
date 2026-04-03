@@ -265,6 +265,41 @@ async function handleAnalyzeJob(jobDescription, jobTitle, company) {
  * @throws {Error} If no API key is configured or no profile has been uploaded.
  * @returns {Promise<Object>} Map of field identifiers to suggested fill values.
  */
+/**
+ * Checks if a form field question is about demographics/EEO.
+ * @param {string} questionText - The field label text.
+ * @returns {boolean}
+ */
+function isDemographicQuestion(questionText) {
+  const lower = (questionText || '').toLowerCase();
+  const patterns = [
+    'gender', 'sex', 'male', 'female', 'man', 'woman', 'non-binary',
+    'race', 'ethnic', 'hispanic', 'latino',
+    'sexual orientation', 'lgbtq',
+    'pronoun',
+    'veteran', 'military', 'protected veteran',
+    'disability', 'disabled',
+    'eeo', 'equal employment', 'voluntary self-identification',
+  ];
+  return patterns.some(p => lower.includes(p));
+}
+
+/**
+ * For a demographic field, finds the safest option from available options.
+ * @param {string[]} options - Available dropdown options.
+ * @returns {string} The safest option or 'NEEDS_USER_INPUT'.
+ */
+function getSafeDemographicAnswer(options) {
+  if (!options || options.length === 0) return 'NEEDS_USER_INPUT';
+  const lower = options.map(o => o.toLowerCase());
+  // Look for "prefer not to say" / "decline" options
+  const safePatterns = ['prefer not', 'decline', 'do not wish', 'choose not', 'not to say', 'not to answer', 'rather not'];
+  for (let i = 0; i < lower.length; i++) {
+    if (safePatterns.some(p => lower[i].includes(p))) return options[i];
+  }
+  return 'NEEDS_USER_INPUT';
+}
+
 async function handleGenerateAutofill(formFields) {
   const settings = await getSettings();
   if (!settings.apiKey) throw new Error('No API key configured. Go to Profile → AI Settings.');
@@ -272,16 +307,85 @@ async function handleGenerateAutofill(formFields) {
   const profile = await getProfile();
   if (!profile) throw new Error('No resume profile found. Upload your resume first.');
 
-  // Q&A list provides explicit overrides that improve accuracy for personal /
-  // preference fields that cannot be inferred from the resume alone.
   const qaList = await getQAList();
-  const messages = buildAutofillPrompt(profile, qaList, formFields);
-  const result = await callAI(settings.provider, settings.apiKey, messages, {
-    model: settings.model,
-    temperature: 0,     // Deterministic — we want consistent field mappings
-    maxTokens: 4096     // Forms can have many fields; allow a large response
-  });
-  return parseJSONResponse(result);
+
+  // Pre-process: protect demographic fields BEFORE sending to AI
+  // If user has a saved Q&A answer, use it. Otherwise, force safe default.
+  const demographicOverrides = {};
+  const fieldsForAI = [];
+
+  for (const field of formFields) {
+    if (isDemographicQuestion(field.question_text)) {
+      // Check if user has a saved Q&A answer for this
+      const qaMatch = (qaList || []).find(qa => {
+        const qLower = qa.question.toLowerCase();
+        const fLower = field.question_text.toLowerCase();
+        return qa.answer && (qLower.includes(fLower) || fLower.includes(qLower) ||
+          // Match common demographic keywords
+          (fLower.includes('gender') && qLower.includes('gender')) ||
+          (fLower.includes('race') && qLower.includes('race')) ||
+          (fLower.includes('ethnic') && qLower.includes('ethnic')) ||
+          (fLower.includes('hispanic') && qLower.includes('hispanic')) ||
+          (fLower.includes('veteran') && qLower.includes('veteran')) ||
+          (fLower.includes('disability') && qLower.includes('disability')) ||
+          (fLower.includes('pronoun') && qLower.includes('pronoun')) ||
+          (fLower.includes('orientation') && qLower.includes('orientation')));
+      });
+
+      if (qaMatch && qaMatch.answer) {
+        // User has a saved answer — use it
+        if (field.field_type === 'dropdown' && field.available_options) {
+          // Find the closest matching option
+          const exact = field.available_options.find(o => o.toLowerCase() === qaMatch.answer.toLowerCase());
+          const partial = field.available_options.find(o => o.toLowerCase().includes(qaMatch.answer.toLowerCase()) || qaMatch.answer.toLowerCase().includes(o.toLowerCase()));
+          demographicOverrides[field.question_id] = {
+            question_id: field.question_id,
+            selected_option: exact || partial || qaMatch.answer,
+            generated_text: ''
+          };
+        } else {
+          demographicOverrides[field.question_id] = {
+            question_id: field.question_id,
+            selected_option: '',
+            generated_text: qaMatch.answer
+          };
+        }
+      } else {
+        // No saved answer — force safe default
+        const safeAnswer = field.available_options
+          ? getSafeDemographicAnswer(field.available_options)
+          : 'NEEDS_USER_INPUT';
+        demographicOverrides[field.question_id] = {
+          question_id: field.question_id,
+          selected_option: safeAnswer,
+          generated_text: ''
+        };
+      }
+    } else {
+      fieldsForAI.push(field);
+    }
+  }
+
+  // Send only non-demographic fields to AI
+  let aiAnswers = [];
+  if (fieldsForAI.length > 0) {
+    const messages = buildAutofillPrompt(profile, qaList, fieldsForAI);
+    const result = await callAI(settings.provider, settings.apiKey, messages, {
+      model: settings.model,
+      temperature: 0,
+      maxTokens: 4096
+    });
+    aiAnswers = parseJSONResponse(result);
+    if (!Array.isArray(aiAnswers)) aiAnswers = aiAnswers.answers || [];
+  }
+
+  // Merge: AI answers + demographic overrides
+  const allAnswers = Array.isArray(aiAnswers) ? [...aiAnswers] : [];
+  for (const [qid, answer] of Object.entries(demographicOverrides)) {
+    allAnswers.push(answer);
+  }
+
+  return allAnswers;
 }
 
 /**
