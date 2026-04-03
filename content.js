@@ -3218,22 +3218,29 @@
    * @param {Array<Object>|Object} answers - AI answer array or legacy flat object.
    * @returns {Promise<{filled: number, skipped: string[]}>}
    */
-  // Synonym groups for semantic matching
-  const _synonymGroups = [
+  // Synonym groups for semantic matching — organized by category
+  const _genderGroups = [
     ['male', 'man', 'he', 'him', 'he/him'],
     ['female', 'woman', 'she', 'her', 'she/her'],
     ['non-binary', 'non binary', 'nonbinary', 'they', 'them', 'they/them', 'genderqueer'],
+  ];
+  const _yesNoGroups = [
     ['yes', 'true', 'i am', 'authorized', 'i do', 'i have'],
     ['no', 'false', 'i am not', 'not authorized', 'i do not', 'i don\'t'],
     ['prefer not to say', 'decline', 'decline to self-identify', 'do not wish', 'choose not', 'not to answer'],
+  ];
+  const _raceGroups = [
     ['white', 'caucasian'],
     ['black', 'african american'],
-    ['asian', 'asian american'],
+    ['asian', 'asian american', 'east asian', 'south asian', 'southeast asian'],
     ['hispanic', 'latino', 'latina', 'latinx'],
+  ];
+  const _orientationGroups = [
     ['straight', 'heterosexual', 'straight / heterosexual'],
     ['gay', 'lesbian', 'gay or lesbian'],
     ['bisexual', 'bi'],
   ];
+  const _synonymGroups = [..._genderGroups, ..._yesNoGroups, ..._raceGroups, ..._orientationGroups];
 
   function _findSynonymGroup(val) {
     const lower = val.toLowerCase().trim();
@@ -3308,9 +3315,9 @@
           if (currentGroup === savedGroup) continue; // same group = correct
 
           // Check if they're in the same category (e.g., both gender-related)
-          const genderGroups = _synonymGroups.slice(0, 3); // male, female, non-binary
-          const raceGroups = _synonymGroups.slice(7, 11);  // white, black, asian, hispanic
-          const orientationGroups = _synonymGroups.slice(11, 13); // straight, gay
+          const genderGroups = _genderGroups;
+          const raceGroups = _raceGroups;
+          const orientationGroups = _orientationGroups;
 
           const currentInGender = genderGroups.includes(currentGroup);
           const savedInGender = genderGroups.includes(savedGroup);
@@ -3360,9 +3367,9 @@
         for (const [savedGroup, savedAnswer] of qaByGroup) {
           if (currentGroup === savedGroup) continue;
 
-          const genderGroups = _synonymGroups.slice(0, 3);
-          const raceGroups = _synonymGroups.slice(7, 11);
-          const orientationGroups = _synonymGroups.slice(11, 13);
+          const genderGroups = _genderGroups;
+          const raceGroups = _raceGroups;
+          const orientationGroups = _orientationGroups;
 
           const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
                                (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
@@ -3413,9 +3420,9 @@
         for (const [savedGroup, savedAnswer] of qaByGroup) {
           if (currentGroup === savedGroup) continue;
 
-          const genderGroups = _synonymGroups.slice(0, 3);
-          const raceGroups = _synonymGroups.slice(7, 11);
-          const orientationGroups = _synonymGroups.slice(11, 13);
+          const genderGroups = _genderGroups;
+          const raceGroups = _raceGroups;
+          const orientationGroups = _orientationGroups;
 
           const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
                                (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
@@ -3462,9 +3469,9 @@
         for (const [savedGroup, savedAnswer] of qaByGroup) {
           if (currentGroup === savedGroup) continue;
 
-          const genderGroups = _synonymGroups.slice(0, 3);
-          const raceGroups = _synonymGroups.slice(7, 11);
-          const orientationGroups = _synonymGroups.slice(11, 13);
+          const genderGroups = _genderGroups;
+          const raceGroups = _raceGroups;
+          const orientationGroups = _orientationGroups;
           const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
                                (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
                                (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
@@ -3516,9 +3523,9 @@
         for (const [savedGroup, savedAnswer] of qaByGroup) {
           if (currentGroup === savedGroup) continue;
 
-          const genderGroups = _synonymGroups.slice(0, 3);
-          const raceGroups = _synonymGroups.slice(7, 11);
-          const orientationGroups = _synonymGroups.slice(11, 13);
+          const genderGroups = _genderGroups;
+          const raceGroups = _raceGroups;
+          const orientationGroups = _orientationGroups;
           const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
                                (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
                                (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
@@ -3550,7 +3557,11 @@
                 options.forEach(opt => {
                   if (found) return;
                   const optText = opt.textContent.trim().toLowerCase();
-                  if (savedGroup.some(s => optText.includes(s))) {
+                  if (optText === savedAnswer.toLowerCase() || savedGroup.some(s => {
+                    if (optText === s) return true;
+                    const re = new RegExp('\\b' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+                    return re.test(optText);
+                  })) {
                     console.log(`[JobMatch AI] React Select: clicking option "${opt.textContent.trim()}"`);
                     opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
                     opt.click();
