@@ -2264,10 +2264,26 @@
         return;
       }
 
-      setStatus(`Found ${questions.length} fields. Filling...`, 'info');
+      // Pass 1: Direct fill from Q&A (no AI)
+      setStatus('Filling from Q&A...', 'info');
+      let directFilled = 0;
+      if (window.__jobMatchDirectFill) {
+        try {
+          const qaList = await sendMessage({ type: 'GET_QA_LIST' }) || [];
+          const profile = await sendMessage({ type: 'GET_PROFILE' }) || {};
+          const directResult = await window.__jobMatchDirectFill(qaList, profile);
+          directFilled = directResult.filled;
+        } catch (_) {}
+      }
 
-      // Step 2: send serializable questions to AI (no DOM refs)
-      const questionsForAI = questions.map(q => {
+      setStatus(`Direct fill: ${directFilled}. Sending rest to AI...`, 'info');
+
+      // Pass 2: AI fill for remaining empty fields
+      const questionsForAI = questions.filter(q => {
+        const el = q._el;
+        if (!el) return true;
+        return !(el.value || '').trim();
+      }).map(q => {
         const clean = { ...q };
         delete clean._el;
         delete clean._radios;
@@ -4311,52 +4327,64 @@
       if (msg.type === 'AUTOFILL_IN_FRAME') {
         (async () => {
           try {
+            // ── PASS 1: Direct fill from Q&A (no AI, instant, accurate) ──
+            let qaList = [], profile = {};
+            try {
+              qaList = await sendMessage({ type: 'GET_QA_LIST' }) || [];
+              profile = await sendMessage({ type: 'GET_PROFILE' }) || {};
+            } catch (_) {}
+
+            let totalFilled = 0;
+            if (window.__jobMatchDirectFill) {
+              const directResult = await window.__jobMatchDirectFill(qaList, profile);
+              totalFilled += directResult.filled;
+              console.log(`[JobMatch AI] iframe Pass 1 (direct): filled ${directResult.filled} fields`);
+            }
+
+            // ── PASS 2: AI fill for remaining fields ──
             _fieldMap = {};
             const questions = detectFormFields();
-            console.log(`[JobMatch AI] iframe: found ${questions.length} fields`);
-            if (questions.length === 0) {
-              sendResponse({ filled: 0 });
-              return;
-            }
-            const questionsForAI = questions.map(q => {
-              const clean = { ...q };
-              delete clean._el;
-              delete clean._radios;
-              return clean;
+            // Filter out fields that were already filled in Pass 1
+            const emptyQuestions = questions.filter(q => {
+              const el = q._el;
+              if (!el) return true;
+              const val = el.value || el.textContent || '';
+              return !val || val.trim().length === 0;
             });
 
-            // Process in smaller batches to avoid AI output truncation
-            const BATCH_SIZE = 6;
-            let totalFilled = 0;
-            for (let i = 0; i < questionsForAI.length; i += BATCH_SIZE) {
-              const batch = questionsForAI.slice(i, i + BATCH_SIZE);
-              const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-              console.log(`[JobMatch AI] iframe: processing batch ${batchNum} (${batch.length} fields)`);
-              try {
-                const response = await sendMessage({
-                  type: 'GENERATE_AUTOFILL',
-                  formFields: batch
-                });
-                const answers = Array.isArray(response) ? response : (response.answers || []);
-                const { filled } = await fillFormFromAnswers(answers);
-                totalFilled += filled;
-              } catch (batchErr) {
-                console.warn(`[JobMatch AI] iframe batch ${batchNum} failed: ${batchErr.message}. Retrying...`);
-                // Retry failed batch once with even smaller sub-batches
-                for (const field of batch) {
-                  try {
-                    const resp = await sendMessage({ type: 'GENERATE_AUTOFILL', formFields: [field] });
-                    const ans = Array.isArray(resp) ? resp : (resp.answers || []);
-                    const { filled } = await fillFormFromAnswers(ans);
-                    totalFilled += filled;
-                  } catch (_) {}
+            console.log(`[JobMatch AI] iframe Pass 2 (AI): ${emptyQuestions.length} of ${questions.length} fields need AI`);
+
+            if (emptyQuestions.length > 0) {
+              const questionsForAI = emptyQuestions.map(q => {
+                const clean = { ...q };
+                delete clean._el;
+                delete clean._radios;
+                return clean;
+              });
+
+              const BATCH_SIZE = 6;
+              for (let i = 0; i < questionsForAI.length; i += BATCH_SIZE) {
+                const batch = questionsForAI.slice(i, i + BATCH_SIZE);
+                const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+                console.log(`[JobMatch AI] iframe AI batch ${batchNum} (${batch.length} fields)`);
+                try {
+                  const response = await sendMessage({ type: 'GENERATE_AUTOFILL', formFields: batch });
+                  const answers = Array.isArray(response) ? response : (response.answers || []);
+                  const { filled } = await fillFormFromAnswers(answers);
+                  totalFilled += filled;
+                } catch (batchErr) {
+                  console.warn(`[JobMatch AI] iframe AI batch ${batchNum} failed: ${batchErr.message}. Retrying per field...`);
+                  for (const field of batch) {
+                    try {
+                      const resp = await sendMessage({ type: 'GENERATE_AUTOFILL', formFields: [field] });
+                      const ans = Array.isArray(resp) ? resp : (resp.answers || []);
+                      const { filled } = await fillFormFromAnswers(ans);
+                      totalFilled += filled;
+                    } catch (_) {}
+                  }
                 }
               }
             }
-
-            // Run verification after all batches complete
-            console.log('[JobMatch AI] iframe: running post-fill verification...');
-            await verifyAndCorrectFills();
 
             sendResponse({ filled: totalFilled });
           } catch (err) {
