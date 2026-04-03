@@ -533,6 +533,7 @@
         background: none;
         border: none;
         padding: 0;
+        overflow: visible;
       }
 
       .jm-section h3 {
