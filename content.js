@@ -778,68 +778,226 @@
       .jm-bullet-item {
         background: var(--jm-card-bg);
         border: 1px solid var(--jm-border);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 12px;
       }
+      .jm-bullet-item.jm-custom-bullet { border-left: 3px solid var(--jm-primary); }
+      .jm-bullet-item.jm-excluded { opacity: 0.4; }
+      .jm-bullet-item.jm-excluded .jm-bullet-after { text-decoration: line-through; }
+
       .jm-bullet-job {
         font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         color: var(--jm-primary);
-        margin-bottom: 6px;
       }
+
       .jm-bullet-before {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--jm-text-muted);
         text-decoration: line-through;
-        margin-bottom: 4px;
+        margin: 8px 0 6px;
         line-height: 1.5;
+        padding: 6px 8px;
+        background: rgba(128,128,128,0.04);
+        border-radius: 6px;
       }
+
       .jm-bullet-after {
         font-size: 12px;
         color: var(--jm-text);
-        margin-bottom: 7px;
-        line-height: 1.5;
-        padding: 6px 8px;
-        border-radius: 6px;
-        border: 1px solid transparent;
-        transition: border-color 0.15s;
+        margin-bottom: 10px;
+        line-height: 1.6;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--jm-border);
+        background: rgba(128,128,128,0.02);
+        transition: border-color 0.15s, background 0.15s;
         outline: none;
       }
-      .jm-bullet-after:hover { border-color: var(--jm-border); }
-      .jm-bullet-after:focus { border-color: var(--jm-primary); background: var(--jm-card-bg); }
-      .jm-bullet-skills-btn { font-size: 10px; padding: 2px 7px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; margin-left: auto; white-space: nowrap; }
-      .jm-bullet-skills-btn:hover { border-color: var(--jm-primary); color: var(--jm-primary); }
-      .jm-bullet-skills-btn.jm-active { border-color: var(--jm-primary); color: var(--jm-primary); background: var(--jm-primary)/10; }
-      .jm-bullet-skills-panel { display: none; margin: 6px 0; padding: 8px 10px; background: var(--jm-card-bg); border: 1px solid var(--jm-border); border-radius: 8px; }
+      .jm-bullet-after:hover {
+        border-color: var(--jm-primary);
+        background: rgba(128,128,128,0.04);
+      }
+      .jm-bullet-after:focus {
+        border-color: var(--jm-primary);
+        background: var(--jm-card-bg);
+        box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+      }
+
+      /* Skills button & panel */
+      .jm-bullet-skills-btn {
+        font-size: 10px;
+        padding: 3px 8px;
+        cursor: pointer;
+        background: none;
+        border: 1px solid var(--jm-border);
+        border-radius: 5px;
+        color: var(--jm-text-secondary);
+        transition: all 0.15s;
+        margin-left: auto;
+        white-space: nowrap;
+      }
+      .jm-bullet-skills-btn:hover {
+        border-color: var(--jm-primary);
+        color: var(--jm-primary);
+      }
+      .jm-bullet-skills-btn.jm-active {
+        border-color: var(--jm-primary);
+        color: var(--jm-primary);
+        background: rgba(59,130,246,0.08);
+      }
+
+      .jm-bullet-skills-panel {
+        display: none;
+        margin: 8px 0 4px;
+        padding: 10px 12px;
+        background: rgba(128,128,128,0.03);
+        border: 1px solid var(--jm-border);
+        border-radius: 8px;
+      }
       .jm-bullet-skills-panel.jm-open { display: block; }
-      .jm-bullet-skills-label { font-size: 10px; font-weight: 600; color: var(--jm-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-      .jm-bullet-skills-list { display: flex; flex-wrap: wrap; gap: 4px; }
-      .jm-skill-chip { font-size: 11px; padding: 3px 8px; border-radius: 12px; cursor: pointer; border: 1px solid var(--jm-primary); color: var(--jm-primary); background: var(--jm-primary)/8; transition: all 0.15s; user-select: none; }
-      .jm-skill-chip:hover { opacity: 0.8; }
-      .jm-skill-chip.jm-excluded-skill { border-color: var(--jm-border); color: var(--jm-text-muted); background: transparent; text-decoration: line-through; opacity: 0.5; }
-      .jm-add-bullet-area { margin-top: 12px; padding: 12px; border: 1px dashed var(--jm-border); border-radius: 8px; background: var(--jm-card-bg); }
+
+      .jm-bullet-skills-label {
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--jm-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 8px;
+      }
+
+      .jm-bullet-skills-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .jm-skill-chip {
+        font-size: 10px;
+        padding: 4px 9px;
+        border-radius: 6px;
+        cursor: pointer;
+        border: 1px solid rgba(59,130,246,0.3);
+        color: var(--jm-primary);
+        background: rgba(59,130,246,0.06);
+        transition: all 0.15s;
+        user-select: none;
+        line-height: 1.2;
+      }
+      .jm-skill-chip:hover {
+        border-color: var(--jm-primary);
+        background: rgba(59,130,246,0.12);
+      }
+      .jm-skill-chip.jm-excluded-skill {
+        border-color: var(--jm-border);
+        color: var(--jm-text-muted);
+        background: transparent;
+        text-decoration: line-through;
+        opacity: 0.45;
+      }
+      /* Add bullet area */
+      .jm-add-bullet-area {
+        margin-top: 14px;
+        padding: 14px;
+        border: 1px dashed var(--jm-border);
+        border-radius: 10px;
+        background: var(--jm-card-bg);
+      }
       .jm-add-bullet-area.jm-open { border-style: solid; border-color: var(--jm-primary); }
-      .jm-add-bullet-trigger { width: 100%; padding: 8px; border: none; background: none; color: var(--jm-primary); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+      .jm-add-bullet-trigger {
+        width: 100%;
+        padding: 8px;
+        border: none;
+        background: none;
+        color: var(--jm-primary);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+      }
       .jm-add-bullet-trigger:hover { text-decoration: underline; }
       .jm-add-bullet-form { display: none; }
       .jm-add-bullet-form.jm-open { display: block; }
-      .jm-add-bullet-select { width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid var(--jm-border); border-radius: 6px; background: var(--jm-card-bg); color: var(--jm-text); margin-bottom: 8px; }
-      .jm-add-bullet-input { width: 100%; padding: 8px; font-size: 12px; border: 1px solid var(--jm-border); border-radius: 6px; background: var(--jm-card-bg); color: var(--jm-text); resize: vertical; min-height: 50px; font-family: inherit; outline: none; }
+      .jm-add-bullet-select {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 12px;
+        border: 1px solid var(--jm-border);
+        border-radius: 8px;
+        background: var(--jm-card-bg);
+        color: var(--jm-text);
+        margin-bottom: 8px;
+      }
+      .jm-add-bullet-input {
+        width: 100%;
+        padding: 10px;
+        font-size: 12px;
+        border: 1px solid var(--jm-border);
+        border-radius: 8px;
+        background: var(--jm-card-bg);
+        color: var(--jm-text);
+        resize: vertical;
+        min-height: 60px;
+        font-family: inherit;
+        outline: none;
+        line-height: 1.5;
+      }
       .jm-add-bullet-input:focus { border-color: var(--jm-primary); }
-      .jm-add-bullet-actions { display: flex; gap: 6px; margin-top: 8px; }
-      .jm-bullet-item.jm-custom-bullet { border-left: 3px solid var(--jm-primary); }
-      .jm-bullet-custom-tag { font-size: 9px; background: var(--jm-primary); color: white; padding: 1px 6px; border-radius: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-      .jm-bullet-actions { display: flex; gap: 6px; align-items: center; }
-      .jm-bullet-copy { font-size: 11px; padding: 3px 10px; }
-      .jm-bullet-refresh { font-size: 11px; padding: 3px 8px; cursor: pointer; background: none; border: 1px solid var(--jm-border); border-radius: 4px; color: var(--jm-text-secondary); transition: all 0.15s; }
-      .jm-bullet-refresh:hover { border-color: var(--jm-primary); color: var(--jm-primary); }
+      .jm-add-bullet-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+      /* "New" tag for custom bullets */
+      .jm-bullet-custom-tag {
+        font-size: 8px;
+        background: var(--jm-primary);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      /* Bullet action buttons (Copy, Refresh) */
+      .jm-bullet-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding-top: 4px;
+      }
+      .jm-bullet-copy {
+        font-size: 10px;
+        padding: 4px 10px;
+        border-radius: 5px;
+      }
+      .jm-bullet-refresh {
+        font-size: 12px;
+        padding: 4px 8px;
+        cursor: pointer;
+        background: none;
+        border: 1px solid var(--jm-border);
+        border-radius: 5px;
+        color: var(--jm-text-secondary);
+        transition: all 0.15s;
+      }
+      .jm-bullet-refresh:hover {
+        border-color: var(--jm-primary);
+        color: var(--jm-primary);
+        background: rgba(59,130,246,0.06);
+      }
       .jm-bullet-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
       @keyframes jm-spin-refresh { to { transform: rotate(360deg); } }
       .jm-bullet-refresh.jm-spinning { animation: jm-spin-refresh 0.8s linear infinite; }
-      .jm-bullet-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+
+      /* Bullet header row */
+      .jm-bullet-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
       .jm-bullet-toggle-wrap {
         position: relative;
         flex-shrink: 0;
