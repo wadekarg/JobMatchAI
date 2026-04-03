@@ -2555,19 +2555,22 @@
         display: inline-flex;
         align-items: center;
         gap: 3px;
-        padding: 2px 7px 2px 5px;
+        padding: 1px 6px 1px 4px;
         background: #ecfdf5;
         border: 1px solid #10b981;
         border-radius: 20px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 500;
         color: #065f46;
         pointer-events: auto;
         user-select: none;
         white-space: nowrap;
-        box-shadow: 0 1px 4px rgba(16,185,129,0.15);
+        box-shadow: 0 1px 3px rgba(16,185,129,0.12);
+        opacity: 1;
+        transition: opacity 0.5s ease;
       }
+      .jmai-badge.jmai-fading { opacity: 0; }
       .jmai-badge svg {
         width: 10px;
         height: 10px;
@@ -2623,12 +2626,13 @@
       if (idx !== -1) _badges.splice(idx, 1);
     });
 
-    // Position badge at the bottom-right corner of the field
+    // Position badge to the right of the field, vertically centered
     function place() {
       const r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return; // element not visible
-      badge.style.top  = (r.bottom - 1) + 'px';
-      badge.style.left = Math.max(0, r.right - badge.offsetWidth) + 'px';
+      if (r.width === 0 && r.height === 0) return;
+      const badgeH = badge.offsetHeight || 16;
+      badge.style.top  = Math.round(r.top + (r.height - badgeH) / 2) + 'px';
+      badge.style.left = Math.round(r.right + 4) + 'px';
     }
     place();
 
@@ -2641,6 +2645,16 @@
       _badgeResizeObs = new ResizeObserver(() => _badges.forEach(b => b.place()));
       _badgeResizeObs.observe(document.body);
     }
+
+    // Auto-fade after 8 seconds, remove after fade
+    setTimeout(() => {
+      badge.classList.add('jmai-fading');
+      setTimeout(() => {
+        badge.remove();
+        const idx = _badges.findIndex(b => b.badgeEl === badge);
+        if (idx !== -1) _badges.splice(idx, 1);
+      }, 500);
+    }, 8000);
   }
 
   /** Removes all autofill badges and their scroll/resize listeners. */
