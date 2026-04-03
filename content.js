@@ -602,47 +602,53 @@
         line-height: 1.5;
       }
 
-      /* Job info */
+      /* Job info card */
       .jm-job-info {
         background: var(--jm-card-bg);
-        border-radius: 8px;
-        padding: 12px;
+        border-radius: 12px;
+        padding: 14px;
         margin-bottom: 16px;
         border: 1px solid var(--jm-border);
         display: none;
       }
 
       .jm-job-info .jm-job-title {
-        font-weight: 600;
+        font-weight: 700;
         font-size: 14px;
         color: var(--jm-text);
-        line-height: 1.3;
+        line-height: 1.35;
         word-wrap: break-word;
         overflow-wrap: break-word;
       }
 
       .jm-job-info .jm-job-company {
         font-size: 13px;
-        color: var(--jm-text-secondary);
-        margin-top: 2px;
+        font-weight: 500;
+        color: var(--jm-primary);
+        margin-top: 3px;
       }
 
       .jm-job-meta {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-top: 8px;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
       }
 
       .jm-job-meta span {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--jm-text-secondary);
-        display: flex;
-        align-items: flex-start;
-        gap: 4px;
-        line-height: 1.3;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        line-height: 1;
+        background: var(--jm-surface, rgba(128,128,128,0.08));
+        padding: 4px 8px;
+        border-radius: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
       }
 
       /* Backdrop (transparent overlay to capture outside clicks) */
@@ -1035,9 +1041,9 @@
           <div class="jm-job-title" id="jmJobTitle"></div>
           <div class="jm-job-company" id="jmJobCompany"></div>
           <div class="jm-job-meta">
-            <span id="jmJobLocation" style="display:none">&#128205; <span id="jmJobLocationText"></span></span>
-            <span id="jmJobSalary" style="display:none">&#128176; <span id="jmJobSalaryText"></span></span>
-            <span id="jmJobId" style="display:none">Job ID: <span id="jmJobIdText"></span></span>
+            <span id="jmJobLocation" style="display:none">&#128205;&nbsp;<span id="jmJobLocationText"></span></span>
+            <span id="jmJobSalary" style="display:none">&#128176;&nbsp;<span id="jmJobSalaryText"></span></span>
+            <span id="jmJobId" style="display:none">&#128196;&nbsp;ID: <span id="jmJobIdText"></span></span>
           </div>
         </div>
 
