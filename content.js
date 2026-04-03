@@ -3369,6 +3369,65 @@
         }
       }
 
+      // Scan custom dropdowns and any element showing a selected value
+      // Greenhouse/React forms use hidden <select> or visible <div> with selected text
+      // Also scan our _fieldMap entries which include custom_dropdown refs
+      for (const [qid, ref] of Object.entries(_fieldMap)) {
+        if (!ref || !ref.el) continue;
+        // Get visible selected text from the element
+        let currentVal = '';
+        if (ref.type === 'custom_dropdown' || ref.type === 'dropdown') {
+          // Try reading the visible text
+          currentVal = ref.el.value || ref.el.textContent || '';
+          // For hidden selects, also check sibling display elements
+          if (!currentVal || currentVal.length > 200) {
+            const parent = ref.el.closest('[class*="select"], [class*="dropdown"], [class*="field"]');
+            if (parent) {
+              const display = parent.querySelector('[class*="single-value"], [class*="selected"], [class*="placeholder"]');
+              if (display) currentVal = display.textContent || '';
+            }
+          }
+        }
+        currentVal = currentVal.trim().toLowerCase();
+        if (!currentVal || currentVal.length > 50) continue;
+
+        const currentGroup = _findSynonymGroup(currentVal);
+        if (!currentGroup) continue;
+
+        for (const [savedGroup, savedAnswer] of qaByGroup) {
+          if (currentGroup === savedGroup) continue;
+
+          const genderGroups = _synonymGroups.slice(0, 3);
+          const raceGroups = _synonymGroups.slice(7, 11);
+          const orientationGroups = _synonymGroups.slice(11, 13);
+
+          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
+                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
+                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
+
+          if (sameCategory) {
+            console.log(`[JobMatch AI] Verification fix (fieldMap): "${ref.questionText || qid}" was "${currentVal}", Q&A wants "${savedAnswer}"`);
+            // Try to correct via our fill functions
+            if (ref.type === 'dropdown' && ref.optionTexts) {
+              const correctOption = ref.optionTexts.find(o =>
+                savedGroup.some(s => o.toLowerCase().includes(s))
+              );
+              if (correctOption) {
+                fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
+                corrections++;
+              }
+            } else if (ref.type === 'custom_dropdown') {
+              // For custom dropdowns, try clicking to open and select the right option
+              try {
+                await fillCustomDropdown(ref.el, savedAnswer);
+                corrections++;
+              } catch (_) {}
+            }
+            break;
+          }
+        }
+      }
+
       if (corrections > 0) {
         console.log(`[JobMatch AI] Verification corrected ${corrections} field(s)`);
       }
