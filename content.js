@@ -3290,6 +3290,83 @@
         skipped.push(qid);
       }
     }
+    // ── Post-fill verification: check filled values against saved Q&A ──
+    // If a field's value doesn't semantically match the user's Q&A answer,
+    // correct it. This catches AI errors like selecting "Woman" when Q&A says "Male".
+    try {
+      const qaData = await sendMessage({ type: 'GET_QA_LIST' });
+      if (qaData && qaData.length > 0) {
+        for (const [qid, ref] of Object.entries(_fieldMap)) {
+          if (!ref || !ref.el) continue;
+          const fieldLabel = (ref.questionText || qid || '').toLowerCase();
+
+          // Find matching Q&A by semantic similarity
+          const qaMatch = qaData.find(qa => {
+            if (!qa.answer) return false;
+            const qLower = qa.question.toLowerCase();
+            // Match by shared keywords
+            return (fieldLabel.includes('gender') && qLower.includes('gender')) ||
+              (fieldLabel.includes('race') && qLower.includes('race')) ||
+              (fieldLabel.includes('ethnic') && qLower.includes('ethnic')) ||
+              (fieldLabel.includes('hispanic') && qLower.includes('hispanic')) ||
+              (fieldLabel.includes('veteran') && qLower.includes('veteran')) ||
+              (fieldLabel.includes('disability') && qLower.includes('disability')) ||
+              (fieldLabel.includes('pronoun') && qLower.includes('pronoun')) ||
+              (fieldLabel.includes('orientation') && qLower.includes('orientation')) ||
+              (fieldLabel.includes('first name') && qLower.includes('first name')) ||
+              (fieldLabel.includes('last name') && qLower.includes('last name')) ||
+              (fieldLabel.includes('email') && qLower.includes('email')) ||
+              (fieldLabel.includes('phone') && qLower.includes('phone'));
+          });
+
+          if (!qaMatch) continue;
+
+          // Get current field value
+          const currentVal = (ref.el.value || ref.el.textContent || '').trim().toLowerCase();
+          const savedVal = qaMatch.answer.trim().toLowerCase();
+          if (!currentVal || !savedVal) continue;
+
+          // Semantic match check using synonym groups
+          const synonymGroups = [
+            ['male', 'man', 'he', 'him', 'he/him'],
+            ['female', 'woman', 'she', 'her', 'she/her'],
+            ['non-binary', 'non binary', 'nonbinary', 'they', 'them', 'they/them'],
+            ['yes', 'true', 'i am', 'authorized', 'i do'],
+            ['no', 'false', 'i am not', 'not authorized', 'i do not'],
+            ['prefer not to say', 'decline', 'decline to self-identify', 'do not wish', 'choose not'],
+          ];
+
+          function findGroup(val) {
+            return synonymGroups.find(g => g.some(s => val.includes(s)));
+          }
+
+          const savedGroup = findGroup(savedVal);
+          const currentGroup = findGroup(currentVal);
+
+          // If they're in different synonym groups, the fill is WRONG — correct it
+          if (savedGroup && currentGroup && savedGroup !== currentGroup) {
+            console.log(`[JobMatch AI] Verification fix: "${fieldLabel}" was "${currentVal}", should be "${savedVal}"`);
+            if (ref.type === 'dropdown' && ref.optionTexts) {
+              // Find the option that matches the saved Q&A answer
+              const correctOption = ref.optionTexts.find(o => {
+                const oLower = o.toLowerCase();
+                return savedGroup.some(s => oLower.includes(s));
+              });
+              if (correctOption) {
+                fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
+              }
+            } else if (ref.type === 'radio' && ref.radios) {
+              fillRadioFromRef(ref.radios, qaMatch.answer);
+            } else {
+              fillInput(ref.el, qaMatch.answer);
+            }
+          }
+        }
+      }
+    } catch (verifyErr) {
+      console.warn('[JobMatch AI] Post-fill verification failed:', verifyErr);
+    }
+
     return { filled, skipped };
   }
 
