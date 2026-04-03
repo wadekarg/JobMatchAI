@@ -3218,6 +3218,151 @@
    * @param {Array<Object>|Object} answers - AI answer array or legacy flat object.
    * @returns {Promise<{filled: number, skipped: string[]}>}
    */
+  // Synonym groups for semantic matching
+  const _synonymGroups = [
+    ['male', 'man', 'he', 'him', 'he/him'],
+    ['female', 'woman', 'she', 'her', 'she/her'],
+    ['non-binary', 'non binary', 'nonbinary', 'they', 'them', 'they/them', 'genderqueer'],
+    ['yes', 'true', 'i am', 'authorized', 'i do', 'i have'],
+    ['no', 'false', 'i am not', 'not authorized', 'i do not', 'i don\'t'],
+    ['prefer not to say', 'decline', 'decline to self-identify', 'do not wish', 'choose not', 'not to answer'],
+    ['white', 'caucasian'],
+    ['black', 'african american'],
+    ['asian', 'asian american'],
+    ['hispanic', 'latino', 'latina', 'latinx'],
+    ['straight', 'heterosexual', 'straight / heterosexual'],
+    ['gay', 'lesbian', 'gay or lesbian'],
+    ['bisexual', 'bi'],
+  ];
+
+  function _findSynonymGroup(val) {
+    const lower = val.toLowerCase();
+    return _synonymGroups.find(g => g.some(s => lower.includes(s)));
+  }
+
+  /**
+   * Post-fill verification: re-reads every filled field's actual DOM value
+   * and compares against saved Q&A using semantic synonym matching.
+   * If a mismatch is detected (e.g., "Woman" filled but Q&A says "Male"),
+   * corrects the field to match the user's Q&A answer.
+   */
+  async function verifyAndCorrectFills() {
+    try {
+      const qaData = await sendMessage({ type: 'GET_QA_LIST' });
+      if (!qaData || qaData.length === 0) return;
+
+      // Build keyword map for matching field labels to Q&A questions
+      const keywordPairs = [
+        ['gender', 'gender'], ['gender identity', 'gender identity'],
+        ['sex', 'gender'],
+        ['race', 'race'], ['ethnicity', 'ethnic'], ['ethnic', 'ethnic'],
+        ['hispanic', 'hispanic'], ['latino', 'hispanic'],
+        ['veteran', 'veteran'], ['military', 'veteran'],
+        ['disability', 'disability'], ['disabled', 'disability'],
+        ['pronoun', 'pronoun'],
+        ['sexual orientation', 'orientation'], ['orientation', 'orientation'],
+        ['first name', 'first name'], ['last name', 'last name'],
+        ['email', 'email'], ['phone', 'phone'],
+        ['city', 'city'], ['state', 'state'], ['zip', 'zip'],
+        ['country', 'country'],
+      ];
+
+      let corrections = 0;
+
+      for (const [qid, ref] of Object.entries(_fieldMap)) {
+        if (!ref || !ref.el) continue;
+        const fieldLabel = (ref.questionText || qid || '').toLowerCase();
+
+        // Find matching Q&A entry
+        let qaMatch = null;
+        for (const [fieldKey, qaKey] of keywordPairs) {
+          if (fieldLabel.includes(fieldKey)) {
+            qaMatch = qaData.find(qa => qa.answer && qa.question.toLowerCase().includes(qaKey));
+            if (qaMatch) break;
+          }
+        }
+        if (!qaMatch) continue;
+
+        // Read actual DOM value (re-read fresh, not cached)
+        let currentVal = '';
+        if (ref.type === 'dropdown') {
+          const sel = ref.el;
+          currentVal = sel.options?.[sel.selectedIndex]?.text || sel.value || '';
+        } else if (ref.type === 'radio' && ref.radios) {
+          const checked = ref.radios.find(r => r.el?.checked);
+          currentVal = checked?.label || checked?.value || '';
+        } else {
+          currentVal = ref.el.value || '';
+        }
+
+        currentVal = currentVal.trim().toLowerCase();
+        const savedVal = qaMatch.answer.trim().toLowerCase();
+        if (!currentVal || !savedVal) continue;
+
+        // Check if values are semantically the same
+        const savedGroup = _findSynonymGroup(savedVal);
+        const currentGroup = _findSynonymGroup(currentVal);
+
+        // Mismatch: different synonym groups, OR saved has a value but current doesn't match
+        const isMismatch = savedGroup && currentGroup && savedGroup !== currentGroup;
+        // Also check exact mismatch for non-synonym fields (name, email, etc.)
+        const isExactMismatch = !savedGroup && !currentGroup && currentVal !== savedVal &&
+          ['first name', 'last name', 'email', 'phone'].some(k => fieldLabel.includes(k));
+
+        if (isMismatch || isExactMismatch) {
+          console.log(`[JobMatch AI] Verification fix: "${fieldLabel}" was "${currentVal}", correcting to "${savedVal}"`);
+
+          if (ref.type === 'dropdown' && ref.optionTexts) {
+            // Find the best matching option using synonym group
+            let correctOption = null;
+            if (savedGroup) {
+              correctOption = ref.optionTexts.find(o =>
+                savedGroup.some(s => o.toLowerCase().includes(s))
+              );
+            }
+            // Fallback: try direct match
+            if (!correctOption) {
+              correctOption = ref.optionTexts.find(o =>
+                o.toLowerCase().includes(savedVal) || savedVal.includes(o.toLowerCase())
+              );
+            }
+            if (correctOption) {
+              fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
+              corrections++;
+            }
+          } else if (ref.type === 'radio' && ref.radios) {
+            // Find radio that matches saved answer
+            let matched = false;
+            if (savedGroup) {
+              for (const r of ref.radios) {
+                const rLabel = (r.label || r.value || '').toLowerCase();
+                if (savedGroup.some(s => rLabel.includes(s))) {
+                  r.el.checked = true;
+                  fireEvents(r.el);
+                  matched = true;
+                  break;
+                }
+              }
+            }
+            if (!matched) {
+              fillRadioFromRef(ref.radios, qaMatch.answer);
+            }
+            corrections++;
+          } else {
+            fillInput(ref.el, qaMatch.answer);
+            corrections++;
+          }
+        }
+      }
+
+      if (corrections > 0) {
+        console.log(`[JobMatch AI] Verification corrected ${corrections} field(s)`);
+      }
+    } catch (err) {
+      console.warn('[JobMatch AI] Post-fill verification failed:', err);
+    }
+  }
+
   async function fillFormFromAnswers(answers) {
     // Handle array format (new) or flat object (legacy)
     if (!Array.isArray(answers)) {
@@ -3296,82 +3441,8 @@
         skipped.push(qid);
       }
     }
-    // ── Post-fill verification: check filled values against saved Q&A ──
-    // If a field's value doesn't semantically match the user's Q&A answer,
-    // correct it. This catches AI errors like selecting "Woman" when Q&A says "Male".
-    try {
-      const qaData = await sendMessage({ type: 'GET_QA_LIST' });
-      if (qaData && qaData.length > 0) {
-        for (const [qid, ref] of Object.entries(_fieldMap)) {
-          if (!ref || !ref.el) continue;
-          const fieldLabel = (ref.questionText || qid || '').toLowerCase();
-
-          // Find matching Q&A by semantic similarity
-          const qaMatch = qaData.find(qa => {
-            if (!qa.answer) return false;
-            const qLower = qa.question.toLowerCase();
-            // Match by shared keywords
-            return (fieldLabel.includes('gender') && qLower.includes('gender')) ||
-              (fieldLabel.includes('race') && qLower.includes('race')) ||
-              (fieldLabel.includes('ethnic') && qLower.includes('ethnic')) ||
-              (fieldLabel.includes('hispanic') && qLower.includes('hispanic')) ||
-              (fieldLabel.includes('veteran') && qLower.includes('veteran')) ||
-              (fieldLabel.includes('disability') && qLower.includes('disability')) ||
-              (fieldLabel.includes('pronoun') && qLower.includes('pronoun')) ||
-              (fieldLabel.includes('orientation') && qLower.includes('orientation')) ||
-              (fieldLabel.includes('first name') && qLower.includes('first name')) ||
-              (fieldLabel.includes('last name') && qLower.includes('last name')) ||
-              (fieldLabel.includes('email') && qLower.includes('email')) ||
-              (fieldLabel.includes('phone') && qLower.includes('phone'));
-          });
-
-          if (!qaMatch) continue;
-
-          // Get current field value
-          const currentVal = (ref.el.value || ref.el.textContent || '').trim().toLowerCase();
-          const savedVal = qaMatch.answer.trim().toLowerCase();
-          if (!currentVal || !savedVal) continue;
-
-          // Semantic match check using synonym groups
-          const synonymGroups = [
-            ['male', 'man', 'he', 'him', 'he/him'],
-            ['female', 'woman', 'she', 'her', 'she/her'],
-            ['non-binary', 'non binary', 'nonbinary', 'they', 'them', 'they/them'],
-            ['yes', 'true', 'i am', 'authorized', 'i do'],
-            ['no', 'false', 'i am not', 'not authorized', 'i do not'],
-            ['prefer not to say', 'decline', 'decline to self-identify', 'do not wish', 'choose not'],
-          ];
-
-          function findGroup(val) {
-            return synonymGroups.find(g => g.some(s => val.includes(s)));
-          }
-
-          const savedGroup = findGroup(savedVal);
-          const currentGroup = findGroup(currentVal);
-
-          // If they're in different synonym groups, the fill is WRONG — correct it
-          if (savedGroup && currentGroup && savedGroup !== currentGroup) {
-            console.log(`[JobMatch AI] Verification fix: "${fieldLabel}" was "${currentVal}", should be "${savedVal}"`);
-            if (ref.type === 'dropdown' && ref.optionTexts) {
-              // Find the option that matches the saved Q&A answer
-              const correctOption = ref.optionTexts.find(o => {
-                const oLower = o.toLowerCase();
-                return savedGroup.some(s => oLower.includes(s));
-              });
-              if (correctOption) {
-                fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
-              }
-            } else if (ref.type === 'radio' && ref.radios) {
-              fillRadioFromRef(ref.radios, qaMatch.answer);
-            } else {
-              fillInput(ref.el, qaMatch.answer);
-            }
-          }
-        }
-      }
-    } catch (verifyErr) {
-      console.warn('[JobMatch AI] Post-fill verification failed:', verifyErr);
-    }
+    // Run post-fill verification
+    await verifyAndCorrectFills();
 
     return { filled, skipped };
   }
@@ -4362,6 +4433,10 @@
                 console.warn(`[JobMatch AI] iframe batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, batchErr.message);
               }
             }
+
+            // Run verification after all batches complete
+            console.log('[JobMatch AI] iframe: running post-fill verification...');
+            await verifyAndCorrectFills();
 
             sendResponse({ filled: totalFilled });
           } catch (err) {
