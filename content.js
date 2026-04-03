@@ -410,7 +410,7 @@
       .jm-actions {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         margin-bottom: 20px;
       }
 
@@ -418,11 +418,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 12px 16px;
+        gap: 6px;
+        padding: 10px 14px;
         border: none;
-        border-radius: 10px;
-        font-size: 14px;
+        border-radius: 8px;
+        font-size: 13px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s;
@@ -491,8 +491,12 @@
       /* Score display */
       .jm-score-section {
         text-align: center;
-        margin-bottom: 20px;
+        margin-bottom: 16px;
+        padding: 16px 14px;
         display: none;
+        background: var(--jm-card-bg);
+        border-radius: 10px;
+        border: 1px solid var(--jm-border);
       }
 
       .jm-score-circle {
@@ -524,12 +528,18 @@
         border-radius: 10px;
         border: 1px solid var(--jm-border);
       }
+      /* Sections that contain card children (bullets, cover letter) — no card bg */
+      #jmBulletSection, #jmCoverLetterSection, #jmTailoredResumeSection, #jmAutofillPreview {
+        background: none;
+        border: none;
+        padding: 0;
+      }
 
       .jm-section h3 {
         font-size: 11px;
         font-weight: 700;
         color: var(--jm-text-secondary);
-        margin-bottom: 10px;
+        margin-bottom: 12px;
         text-transform: uppercase;
         letter-spacing: 0.8px;
       }
@@ -565,9 +575,9 @@
       }
 
       .jm-recs li {
-        padding: 8px 0;
+        padding: 6px 0;
         border-bottom: 1px solid var(--jm-border);
-        font-size: 13px;
+        font-size: 12px;
         line-height: 1.5;
         color: var(--jm-text);
       }
@@ -788,19 +798,21 @@
 
       .jm-bullet-job {
         font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
         color: var(--jm-primary);
+        white-space: normal;
+        word-wrap: break-word;
+        line-height: 1.3;
       }
 
       .jm-bullet-before {
         font-size: 11px;
         color: var(--jm-text-muted);
         text-decoration: line-through;
-        margin: 8px 0 6px;
+        margin: 10px 0 8px;
         line-height: 1.5;
-        padding: 6px 8px;
+        padding: 8px 10px;
         background: rgba(128,128,128,0.04);
         border-radius: 6px;
       }
@@ -994,9 +1006,8 @@
       /* Bullet header row */
       .jm-bullet-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
-        margin-bottom: 4px;
       }
       .jm-bullet-toggle-wrap {
         position: relative;
