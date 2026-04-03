@@ -604,26 +604,33 @@
         font-weight: 600;
         font-size: 14px;
         color: var(--jm-text);
+        line-height: 1.3;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
       }
 
       .jm-job-info .jm-job-company {
         font-size: 13px;
         color: var(--jm-text-secondary);
+        margin-top: 2px;
       }
 
       .jm-job-meta {
         display: flex;
-        gap: 12px;
-        margin-top: 6px;
-        flex-wrap: wrap;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 8px;
       }
 
       .jm-job-meta span {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--jm-text-secondary);
-        display: inline-flex;
-        align-items: center;
+        display: flex;
+        align-items: flex-start;
         gap: 4px;
+        line-height: 1.3;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
       }
 
       /* Backdrop (transparent overlay to capture outside clicks) */
