@@ -3272,7 +3272,15 @@
         }
       }
 
-      if (qaByGroup.size === 0) return;
+      if (qaByGroup.size === 0) {
+        console.log('[JobMatch AI] Verification: no demographic Q&A answers found with matching synonym groups');
+        return;
+      }
+
+      console.log(`[JobMatch AI] Verification: ${qaByGroup.size} demographic Q&A groups loaded:`);
+      for (const [group, answer] of qaByGroup) {
+        console.log(`  → Group [${group.join(', ')}] = "${answer}"`);
+      }
 
       let corrections = 0;
 
@@ -3280,6 +3288,7 @@
       document.querySelectorAll('select').forEach(sel => {
         const selectedText = sel.options?.[sel.selectedIndex]?.text?.trim().toLowerCase() || '';
         if (!selectedText) return;
+        console.log(`[JobMatch AI] Verification: checking <select> "${sel.name || sel.id || '?'}" = "${selectedText}"`);
 
         const currentGroup = _findSynonymGroup(selectedText);
         if (!currentGroup) return;
@@ -3370,16 +3379,13 @@
       }
 
       // Scan custom dropdowns and any element showing a selected value
-      // Greenhouse/React forms use hidden <select> or visible <div> with selected text
-      // Also scan our _fieldMap entries which include custom_dropdown refs
+      console.log(`[JobMatch AI] Verification: scanning ${Object.keys(_fieldMap).length} _fieldMap entries...`);
       for (const [qid, ref] of Object.entries(_fieldMap)) {
         if (!ref || !ref.el) continue;
         // Get visible selected text from the element
         let currentVal = '';
         if (ref.type === 'custom_dropdown' || ref.type === 'dropdown') {
-          // Try reading the visible text
           currentVal = ref.el.value || ref.el.textContent || '';
-          // For hidden selects, also check sibling display elements
           if (!currentVal || currentVal.length > 200) {
             const parent = ref.el.closest('[class*="select"], [class*="dropdown"], [class*="field"]');
             if (parent) {
@@ -3387,9 +3393,12 @@
               if (display) currentVal = display.textContent || '';
             }
           }
+        } else {
+          currentVal = ref.el.value || ref.el.textContent || '';
         }
         currentVal = currentVal.trim().toLowerCase();
         if (!currentVal || currentVal.length > 50) continue;
+        console.log(`[JobMatch AI] Verification: _fieldMap "${ref.questionText || qid}" (${ref.type}) = "${currentVal}"`);
 
         const currentGroup = _findSynonymGroup(currentVal);
         if (!currentGroup) continue;
