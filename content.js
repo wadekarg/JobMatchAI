@@ -496,16 +496,16 @@
       }
 
       .jm-score-circle {
-        width: 100px;
-        height: 100px;
+        width: 80px;
+        height: 80px;
         border-radius: 50%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 32px;
+        font-size: 28px;
         font-weight: 700;
         color: white;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
 
       .jm-score-label { font-size: 13px; color: var(--jm-text-secondary); }
@@ -514,48 +514,54 @@
       .score-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
       .score-red { background: linear-gradient(135deg, #ef4444, #dc2626); }
 
-      /* Skills tags */
+      /* Sections */
       .jm-section {
-        margin-bottom: 16px;
+        margin-bottom: 20px;
+        padding: 14px;
         display: none;
         overflow: hidden;
+        background: var(--jm-card-bg);
+        border-radius: 10px;
+        border: 1px solid var(--jm-border);
       }
 
       .jm-section h3 {
-        font-size: 13px;
-        font-weight: 600;
+        font-size: 11px;
+        font-weight: 700;
         color: var(--jm-text-secondary);
-        margin-bottom: 8px;
+        margin-bottom: 10px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
       }
 
+      /* Skill tags */
       .jm-tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 5px;
-        overflow: hidden;
+        gap: 6px;
       }
 
       .jm-tag {
-        padding: 3px 8px;
-        border-radius: 20px;
+        padding: 5px 10px;
+        border-radius: 6px;
         font-size: 11px;
         font-weight: 500;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        line-height: 1.2;
       }
 
-      .jm-tag-match { background: #d1fae5; color: #059669; }
-      .jm-tag-missing { background: #fee2e2; color: #dc2626; }
-      .jm-tag-keyword { background: var(--jm-tag-bg); color: var(--jm-tag-text); }
+      .jm-tag-match { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+      .jm-tag-missing { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+      .jm-tag-keyword { background: var(--jm-tag-bg); color: var(--jm-tag-text); border: 1px solid var(--jm-border); }
 
       /* Recommendations */
       .jm-recs {
         list-style: none;
         padding: 0;
+        margin: 0;
       }
 
       .jm-recs li {
