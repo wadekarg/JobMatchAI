@@ -964,14 +964,17 @@
 
       /* "New" tag for custom bullets */
       .jm-bullet-custom-tag {
-        font-size: 8px;
+        font-size: 9px;
         background: var(--jm-primary);
         color: white;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 5px;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.4px;
+        line-height: 1;
+        flex-shrink: 0;
+        margin-top: 1px;
       }
 
       /* Bullet action buttons (Copy, Refresh) */
