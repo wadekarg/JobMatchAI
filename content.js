@@ -2240,7 +2240,9 @@
     try {
       // Step 1: detect fields and store DOM references
       _fieldMap = {};
+      console.log('[JobMatch AI] Detecting form fields...');
       const questions = detectFormFields();
+      console.log(`[JobMatch AI] Found ${questions.length} form fields`);
       if (questions.length === 0) {
         setStatus('No form fields found on this page.', 'error');
         return;
@@ -2256,10 +2258,12 @@
         return clean;
       });
 
+      console.log('[JobMatch AI] Sending to AI for autofill...');
       const response = await sendMessage({
         type: 'GENERATE_AUTOFILL',
         formFields: questionsForAI
       });
+      console.log('[JobMatch AI] AI response received');
 
       // Step 3: directly fill the form
       const answers = response.answers || response;
@@ -2269,6 +2273,7 @@
       setStatus(msg, 'success');
       setTimeout(clearStatus, 3000);
     } catch (err) {
+      console.error('[JobMatch AI] AutoFill error:', err);
       setStatus('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
