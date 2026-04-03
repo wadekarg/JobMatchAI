@@ -1018,7 +1018,7 @@
           <div class="jm-job-meta">
             <span id="jmJobLocation" style="display:none">&#128205; <span id="jmJobLocationText"></span></span>
             <span id="jmJobSalary" style="display:none">&#128176; <span id="jmJobSalaryText"></span></span>
-            <span id="jmJobId" style="display:none">&#128196; <span id="jmJobIdText"></span></span>
+            <span id="jmJobId" style="display:none">Job ID: <span id="jmJobIdText"></span></span>
           </div>
         </div>
 
