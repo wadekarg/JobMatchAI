@@ -98,69 +98,74 @@
     if (!label) return null;
     const l = label.toLowerCase().trim();
 
-    // Direct profile field mapping (highest priority)
+    // ── Profile field mapping (only for very specific short labels) ──
     const profileMap = {
       'first name': profile?.name?.split(/\s+/)[0] || '',
+      'preferred first name': profile?.name?.split(/\s+/)[0] || '',
       'last name': profile?.name?.split(/\s+/).slice(1).join(' ') || '',
       'full name': profile?.name || '',
-      'name': profile?.name || '',
       'email': profile?.email || '',
       'email address': profile?.email || '',
       'phone': profile?.phone || '',
       'phone number': profile?.phone || '',
-      'linkedin': profile?.linkedin || '',
-      'linkedin profile': profile?.linkedin || '',
-      'linkedin url': profile?.linkedin || '',
       'linkedin profile url': profile?.linkedin || '',
-      'github': profile?.github || '',
       'github profile url': profile?.github || '',
-      'github url': profile?.github || '',
-      'website': profile?.website || '',
-      'portfolio': profile?.website || '',
-      'personal website': profile?.website || '',
       'portfolio / personal website url': profile?.website || '',
+      'location (city)': (profile?.location || '').split(',')[0]?.trim() || '',
       'city': (profile?.location || '').split(',')[0]?.trim() || '',
-      'location': profile?.location || '',
-      'summary': profile?.summary || '',
-      'professional summary': profile?.summary || '',
     };
 
-    // Check exact profile match
-    for (const [key, value] of Object.entries(profileMap)) {
-      if (value && (l === key || l.includes(key) || key.includes(l))) {
-        return value;
-      }
+    // Profile match: ONLY exact label match (no fuzzy)
+    if (profileMap[l] !== undefined && profileMap[l]) {
+      return profileMap[l];
     }
 
-    // Check Q&A list
+    // ── Q&A matching (strict) ──
     if (!qaList || qaList.length === 0) return null;
 
-    // Exact question match
+    // 1. Exact question match
     const exact = qaList.find(qa => qa.answer && qa.question.toLowerCase().trim() === l);
     if (exact) return exact.answer;
 
-    // Q&A question contains label
-    const contains = qaList.find(qa => qa.answer && qa.question.toLowerCase().includes(l));
-    if (contains) return contains.answer;
-
-    // Label contains Q&A question
-    const contained = qaList.find(qa => {
+    // 2. Very high similarity: label and Q&A question are nearly identical
+    //    Both must be short (< 50 chars) and one must contain the other fully
+    const highSim = qaList.find(qa => {
       if (!qa.answer) return false;
       const q = qa.question.toLowerCase().trim();
-      return q.length > 4 && l.includes(q);
+      // Both short and one contains the other
+      if (q.length < 50 && l.length < 50) {
+        if (q === l) return true;
+        // Q contains label but label must be substantial (>= 6 chars)
+        if (l.length >= 6 && q.includes(l)) return true;
+        // Label contains Q but Q must be substantial
+        if (q.length >= 6 && l.includes(q)) return true;
+      }
+      return false;
     });
-    if (contained) return contained.answer;
+    if (highSim) return highSim.answer;
 
-    // Keyword overlap (for longer labels)
-    const words = l.split(/[\s,/]+/).filter(w => w.length > 3);
-    if (words.length > 0) {
-      const kwMatch = qaList.find(qa => {
-        if (!qa.answer) return false;
-        const qWords = qa.question.toLowerCase().split(/[\s,/]+/);
-        const overlap = words.filter(w => qWords.some(qw => qw.includes(w) || w.includes(qw)));
-        return overlap.length >= Math.min(2, words.length);
-      });
-      if (kwMatch) return kwMatch.answer;
+    // 3. For LONG labels (questions), check if the core meaning matches
+    //    Only match if the label is clearly about the same topic
+    //    Skip this for short generic labels to avoid false matches
+    if (l.length > 20) {
+      // Extract the key noun phrases, ignoring common words
+      const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'do', 'does', 'did', 'you',
+        'your', 'have', 'has', 'will', 'would', 'in', 'on', 'at', 'to', 'for', 'of', 'or',
+        'and', 'from', 'with', 'by', 'this', 'that', 'what', 'how', 'which', 'who', 'where',
+        'when', 'please', 'select', 'enter', 'provide', 'currently', 'now', 'not', 'been',
+        'being', 'most', 'any', 'if', 'can', 'may', 'need', 'order', 'job', 'posted']);
+
+      const labelWords = l.split(/[\s,?/()]+/).filter(w => w.length > 2 && !stopWords.has(w));
+      if (labelWords.length >= 2) {
+        const match = qaList.find(qa => {
+          if (!qa.answer) return false;
+          const qWords = qa.question.toLowerCase().split(/[\s,?/()]+/).filter(w => w.length > 2 && !stopWords.has(w));
+          // Require at least 50% of Q&A keywords present in label
+          const overlap = qWords.filter(qw => labelWords.some(lw => lw === qw || (lw.length > 4 && qw.includes(lw)) || (qw.length > 4 && lw.includes(qw))));
+          return qWords.length > 0 && overlap.length >= Math.ceil(qWords.length * 0.5) && overlap.length >= 2;
+        });
+        if (match) return match.answer;
+      }
     }
 
     return null;
@@ -247,12 +252,17 @@
     for (const input of inputs) {
       if (input.offsetParent === null) continue; // hidden
       if (input.value && input.value.trim().length > 0) continue; // already has value
+      // Skip inputs that are part of React Select (combobox search inputs)
+      if (input.getAttribute('role') === 'combobox') continue;
+      if (input.getAttribute('aria-autocomplete')) continue;
 
       const label = getElementLabel(input);
       if (!label) continue;
 
       const answer = matchQA(label, qaList, profile);
       if (answer) {
+        // Sanity check: don't put long answers in short text inputs
+        if (input.type !== 'textarea' && input.tagName !== 'TEXTAREA' && answer.length > 200) continue;
         console.log(`[JobMatch AI] Direct fill: "${label}" → "${answer.substring(0, 50)}"`);
         setNativeInputValue(input, answer);
         filledIds.add(input.id || input.name);
@@ -313,13 +323,20 @@
       }
     }
 
-    // ── 4. Checkboxes ──
+    // ── 4. Checkboxes (only for Yes/No type questions, not multi-select) ──
+    // Skip checkboxes that look like multi-select options (city names, skills, etc.)
     document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       const label = getElementLabel(cb);
       if (!label) return;
 
+      // Skip multi-select checkboxes (city names, office locations, skills)
+      // Only fill checkboxes that are clearly Yes/No questions
       const answer = matchQA(label, qaList, profile);
       if (!answer) return;
+
+      // Only fill if the Q&A answer is clearly a yes/no type
+      const isYesNo = /^(yes|no|true|false|i am|i do|i have|i don't|i am not)/i.test(answer);
+      if (!isYesNo) return;
 
       const shouldCheck = /^(yes|true|1|checked|agree|accept|i am|i do|i have)/i.test(answer);
       if (cb.checked !== shouldCheck) {
