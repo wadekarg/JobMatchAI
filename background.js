@@ -711,58 +711,102 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills, cus
     'technical skills', 'core competencies', 'professional development'];
 
   if (customBullets && customBullets.length > 0) {
+    // Build lookup of other experience entries for boundary detection
+    const otherEntries = [];
+    if (profile.experience) {
+      profile.experience.forEach((exp, i) => {
+        otherEntries.push({
+          idx: i, section: 'experience',
+          company: (exp.company || '').toLowerCase(),
+          title: (exp.title || '').toLowerCase(),
+        });
+      });
+    }
+    if (profile.projects) {
+      profile.projects.forEach((proj, i) => {
+        otherEntries.push({
+          idx: i, section: 'projects',
+          company: '',
+          title: (proj.name || proj.title || '').toLowerCase(),
+        });
+      });
+    }
+
     for (const custom of customBullets) {
-      // Find the target job's title and company to locate it in the DOCX
-      let targetText = '';
+      // Get both company and title for the target entry
+      let targetCompany = '';
+      let targetTitle = '';
       if (custom.targetSection === 'experience' && profile.experience?.[custom.targetIdx]) {
         const exp = profile.experience[custom.targetIdx];
-        targetText = (exp.company || exp.title || '').toLowerCase();
+        targetCompany = (exp.company || '').toLowerCase();
+        targetTitle = (exp.title || '').toLowerCase();
       } else if (custom.targetSection === 'projects' && profile.projects?.[custom.targetIdx]) {
         const proj = profile.projects[custom.targetIdx];
-        targetText = (proj.name || proj.title || '').toLowerCase();
+        targetTitle = (proj.name || proj.title || '').toLowerCase();
       }
 
-      if (!targetText || !custom.text) continue;
+      if ((!targetCompany && !targetTitle) || !custom.text) continue;
 
+      // Collect all paragraphs first
       const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
-      let lastContentIdx = -1;
-      let lastContentEnd = -1;
-      let foundTarget = false;
+      const allParas = [];
       let match;
-
       while ((match = paragraphRegex.exec(docXml)) !== null) {
-        const paraText = extractParagraphText(match[0]);
-        const paraLower = paraText.toLowerCase().trim();
+        allParas.push({
+          xml: match[0],
+          text: extractParagraphText(match[0]),
+          index: match.index,
+          end: match.index + match[0].length,
+        });
+      }
 
-        // Found the target section
-        if (paraLower.includes(targetText)) {
-          foundTarget = true;
-          continue;
-        }
-
-        if (foundTarget) {
-          // Check if we've hit a NEW section (another job, project, or section header)
-          const hitsNewSection = allSectionNames.some(name =>
-            name !== targetText && paraLower.includes(name) && paraLower.length < 100
-          );
-          const hitsSectionHeader = sectionHeaders.some(h => paraLower === h || paraLower.startsWith(h + ':'));
-
-          if (hitsNewSection || hitsSectionHeader) {
-            break; // Stop — we've left the target section
-          }
-
-          // Track content paragraphs (skip empty/very short ones)
-          if (paraText.trim().length > 10) {
-            lastContentIdx = match.index;
-            lastContentEnd = match.index + match[0].length;
-          }
+      // Find the paragraph that contains the target company or title
+      let targetParaIdx = -1;
+      for (let i = 0; i < allParas.length; i++) {
+        const lower = allParas[i].text.toLowerCase();
+        // Match if paragraph contains company AND/OR title
+        const hasCompany = targetCompany && lower.includes(targetCompany);
+        const hasTitle = targetTitle && lower.includes(targetTitle);
+        if (hasCompany || hasTitle) {
+          targetParaIdx = i;
+          break;
         }
       }
 
-      if (lastContentIdx !== -1) {
-        const lastPara = docXml.substring(lastContentIdx, lastContentEnd);
-        const newPara = replaceParagraphText(lastPara, custom.text);
-        docXml = docXml.substring(0, lastContentEnd) + newPara + docXml.substring(lastContentEnd);
+      if (targetParaIdx === -1) continue;
+
+      // Scan forward from target paragraph to find the last bullet in this section
+      let lastContentParaIdx = -1;
+      for (let i = targetParaIdx + 1; i < allParas.length; i++) {
+        const lower = allParas[i].text.toLowerCase().trim();
+        if (!lower) continue; // skip empty
+
+        // Check if this paragraph belongs to a DIFFERENT entry
+        const hitsOtherEntry = otherEntries.some(entry => {
+          // Skip the target entry itself
+          if (entry.section === custom.targetSection && entry.idx === custom.targetIdx) return false;
+          // Check if this paragraph has another entry's company or title
+          return (entry.company && lower.includes(entry.company)) ||
+                 (entry.title && lower.includes(entry.title));
+        });
+
+        // Check section headers
+        const hitsSectionHeader = sectionHeaders.some(h =>
+          lower === h || lower.startsWith(h + ':') || lower.startsWith(h + ' ')
+        );
+
+        if (hitsOtherEntry || hitsSectionHeader) break;
+
+        // Track as content if it's a real bullet (not just a date or short label)
+        if (allParas[i].text.trim().length > 15) {
+          lastContentParaIdx = i;
+        }
+      }
+
+      if (lastContentParaIdx !== -1) {
+        const para = allParas[lastContentParaIdx];
+        const newPara = replaceParagraphText(para.xml, custom.text);
+        docXml = docXml.substring(0, para.end) + newPara + docXml.substring(para.end);
         insertedCount++;
       }
     }
