@@ -3437,8 +3437,92 @@
         }
       }
 
+      // FINAL PASS: Brute-force scan ALL <select> elements in the ENTIRE document
+      // including ones not in _fieldMap. This catches Greenhouse EEO selects that
+      // detectFormFields() missed.
+      console.log('[JobMatch AI] Verification: final brute-force scan of all selects...');
+      document.querySelectorAll('select').forEach(sel => {
+        const selectedIdx = sel.selectedIndex;
+        if (selectedIdx < 0) return;
+        const selectedText = (sel.options[selectedIdx]?.text || '').trim().toLowerCase();
+        if (!selectedText || selectedText.length > 80) return;
+
+        const currentGroup = _findSynonymGroup(selectedText);
+        if (!currentGroup) return;
+
+        for (const [savedGroup, savedAnswer] of qaByGroup) {
+          if (currentGroup === savedGroup) continue;
+
+          const genderGroups = _synonymGroups.slice(0, 3);
+          const raceGroups = _synonymGroups.slice(7, 11);
+          const orientationGroups = _synonymGroups.slice(11, 13);
+          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
+                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
+                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
+
+          if (sameCategory) {
+            // Find the correct option
+            const correctOpt = Array.from(sel.options).find(o =>
+              savedGroup.some(s => o.text.trim().toLowerCase().includes(s))
+            );
+            if (correctOpt) {
+              console.log(`[JobMatch AI] BRUTE FORCE FIX: <select name="${sel.name}"> was "${selectedText}", setting to "${correctOpt.text}" (Q&A: "${savedAnswer}")`);
+              sel.value = correctOpt.value;
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
+              corrections++;
+            }
+            break;
+          }
+        }
+      });
+
+      // Also scan for React Select / custom dropdowns showing wrong values
+      document.querySelectorAll('[class*="select__single-value"], [class*="selected-value"], [class*="Select-value-label"]').forEach(display => {
+        const text = (display.textContent || '').trim().toLowerCase();
+        if (!text || text.length > 80) return;
+
+        const currentGroup = _findSynonymGroup(text);
+        if (!currentGroup) return;
+
+        for (const [savedGroup, savedAnswer] of qaByGroup) {
+          if (currentGroup === savedGroup) continue;
+
+          const genderGroups = _synonymGroups.slice(0, 3);
+          const raceGroups = _synonymGroups.slice(7, 11);
+          const orientationGroups = _synonymGroups.slice(11, 13);
+          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
+                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
+                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
+
+          if (sameCategory) {
+            console.log(`[JobMatch AI] BRUTE FORCE: found custom dropdown showing "${text}", Q&A wants "${savedAnswer}". Attempting to click and select...`);
+            // Try to find the hidden <select> or <input> nearby
+            const container = display.closest('[class*="select"], [class*="dropdown"]');
+            if (container) {
+              const hiddenSelect = container.querySelector('select');
+              if (hiddenSelect) {
+                const correctOpt = Array.from(hiddenSelect.options).find(o =>
+                  savedGroup.some(s => o.text.trim().toLowerCase().includes(s))
+                );
+                if (correctOpt) {
+                  hiddenSelect.value = correctOpt.value;
+                  hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                  // Also update the visible display
+                  display.textContent = correctOpt.text;
+                  corrections++;
+                }
+              }
+            }
+            break;
+          }
+        }
+      });
+
       if (corrections > 0) {
         console.log(`[JobMatch AI] Verification corrected ${corrections} field(s)`);
+      } else {
+        console.log('[JobMatch AI] Verification: no corrections needed or no conflicts found');
       }
     } catch (err) {
       console.warn('[JobMatch AI] Post-fill verification failed:', err);
