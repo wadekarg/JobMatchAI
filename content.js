@@ -2541,7 +2541,7 @@
         font-size: 10px;
         font-weight: 500;
         color: #065f46;
-        pointer-events: none;
+        pointer-events: auto;
         user-select: none;
         white-space: nowrap;
         box-shadow: 0 1px 4px rgba(16,185,129,0.15);
@@ -2550,6 +2550,28 @@
         width: 10px;
         height: 10px;
         flex-shrink: 0;
+      }
+      .jmai-badge-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 12px;
+        height: 12px;
+        margin-left: 2px;
+        border: none;
+        background: none;
+        color: #065f46;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+        border-radius: 50%;
+        padding: 0;
+        opacity: 0.5;
+        transition: opacity 0.15s;
+      }
+      .jmai-badge-close:hover {
+        opacity: 1;
+        background: rgba(6,95,70,0.1);
       }
     `;
     document.head.appendChild(style);
@@ -2569,8 +2591,15 @@
     badge.className = 'jmai-badge';
     badge.innerHTML = `<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M6 1l1 3h3l-2.5 1.8.95 3L6 7.2 3.55 8.8l.95-3L2 4h3L6 1z" fill="#10b981"/>
-    </svg>Autofilled by JobMatch AI`;
+    </svg>Autofilled by JobMatch AI<button class="jmai-badge-close" title="Dismiss">&times;</button>`;
     document.body.appendChild(badge);
+
+    // Close button removes this badge
+    badge.querySelector('.jmai-badge-close').addEventListener('click', () => {
+      badge.remove();
+      const idx = _badges.findIndex(b => b.badgeEl === badge);
+      if (idx !== -1) _badges.splice(idx, 1);
+    });
 
     // Position badge at the bottom-right corner of the field
     function place() {

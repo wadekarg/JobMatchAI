@@ -936,23 +936,24 @@ Options: ["No, I am not a protected veteran", "I am a veteran"] → pick full ma
 
 If multiple close matches → choose most specific.
 
-3) DEMOGRAPHIC SAFETY
+3) DEMOGRAPHIC SAFETY — CRITICAL
 --------------------------------
 If question is about:
-- Gender
-- Race
+- Gender / Gender identity
+- Race / Ethnicity
 - Sexual orientation
+- Pronouns
 - Veteran status
 - Disability
 
-AND user has NO saved QA answer →
-Select:
-"Prefer not to say"
-or
-"Decline to self-identify"
-if available.
+NEVER guess these from the candidate's name, resume, or any other data.
+ONLY use a saved QA answer that EXACTLY matches one of these categories.
 
-If not available → return NEEDS_USER_INPUT.
+If user has a saved QA answer for this category → use semantic matching to pick the closest option.
+If user has NO saved QA answer → select "Prefer not to say" or "Decline to self-identify" if available.
+If neither option is available → return NEEDS_USER_INPUT.
+
+Do NOT attempt to infer gender, race, or any demographic from the person's name.
 
 4) TEXTAREA / SHORT TEXT
 --------------------------------
