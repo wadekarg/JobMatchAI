@@ -1017,6 +1017,22 @@ const handlers = {
   'TRIGGER_ANALYZE': (msg) => forwardToActiveTab(msg),
 
   'TRIGGER_AUTOFILL': (msg) => forwardToActiveTab(msg),
+
+  'AUTOFILL_IN_FRAMES': async () => {
+    // Broadcast AUTOFILL_IN_FRAME to all frames in the active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return { filled: 0 };
+    const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+    let totalFilled = 0;
+    for (const frame of frames) {
+      if (frame.frameId === 0) continue; // skip top frame (already tried)
+      try {
+        const result = await chrome.tabs.sendMessage(tab.id, { type: 'AUTOFILL_IN_FRAME' }, { frameId: frame.frameId });
+        if (result?.filled > 0) totalFilled += result.filled;
+      } catch (_) {} // iframe might not have our content script
+    }
+    return { filled: totalFilled };
+  },
 };
 
 async function handleMessage(message, sender) {

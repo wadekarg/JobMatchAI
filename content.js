@@ -2244,6 +2244,16 @@
       const questions = detectFormFields();
       console.log(`[JobMatch AI] Found ${questions.length} form fields`);
       if (questions.length === 0) {
+        // No fields in top frame — try iframes via broadcast
+        console.log('[JobMatch AI] No fields in top frame, broadcasting to iframes...');
+        try {
+          const iframeResult = await chrome.runtime.sendMessage({ type: 'AUTOFILL_IN_FRAMES' });
+          if (iframeResult?.filled > 0) {
+            setStatus(`Filled ${iframeResult.filled} fields in embedded form.`, 'success');
+            setTimeout(clearStatus, 3000);
+            return;
+          }
+        } catch (_) {}
         setStatus('No form fields found on this page.', 'error');
         return;
       }
@@ -4196,9 +4206,47 @@
   // ─── Initialize ───────────────────────────────────────────────
   // Build the panel and toggle button immediately on script inject.
   // The panel starts hidden (no .open class); it is shown on first togglePanel() call.
+  // Only create the panel and toggle button in the top frame — not in iframes.
+  // In iframes, we only listen for autofill messages from the parent.
 
-  createPanel();
-  createToggleButton();
+  if (window === window.top) {
+    createPanel();
+    createToggleButton();
+  } else {
+    // Running inside an iframe — listen for autofill requests from the parent
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg.type === 'AUTOFILL_IN_FRAME') {
+        (async () => {
+          try {
+            _fieldMap = {};
+            const questions = detectFormFields();
+            console.log(`[JobMatch AI] iframe: found ${questions.length} fields`);
+            if (questions.length === 0) {
+              sendResponse({ filled: 0 });
+              return;
+            }
+            const questionsForAI = questions.map(q => {
+              const clean = { ...q };
+              delete clean._el;
+              delete clean._radios;
+              return clean;
+            });
+            const response = await sendMessage({
+              type: 'GENERATE_AUTOFILL',
+              formFields: questionsForAI
+            });
+            const answers = response.answers || response;
+            const { filled } = await fillFormFromAnswers(answers);
+            sendResponse({ filled });
+          } catch (err) {
+            console.error('[JobMatch AI] iframe autofill error:', err);
+            sendResponse({ filled: 0, error: err.message });
+          }
+        })();
+        return true; // keep channel open for async response
+      }
+    });
+  }
 
   // ─── SPA URL change detection (LinkedIn, Indeed, etc.) ────────
   // LinkedIn and Indeed navigate between job listings without a full page reload.
