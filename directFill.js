@@ -240,7 +240,11 @@
   async function directFillFromQA(qaList, profile) {
     let filled = 0;
     const filledIds = new Set();
+    const filledLabels = new Set();
     const unfilled = [];
+
+    // Store filled labels globally so Pass 2 can skip them
+    window.__jobMatchFilledLabels = filledLabels;
 
     console.log(`[JobMatch AI] Direct fill: scanning page with ${qaList?.length || 0} Q&A entries`);
 
@@ -269,6 +273,7 @@
         console.log(`[JobMatch AI] Direct fill: "${label}" → "${answer.substring(0, 50)}"`);
         setNativeInputValue(input, answer);
         filledIds.add(input.id || input.name);
+        filledLabels.add(label);
         filled++;
       }
     }
@@ -291,6 +296,7 @@
           sel.value = opt.value;
           fireEvents(sel);
           filledIds.add(sel.id || sel.name);
+          filledLabels.add(label);
           filled++;
         }
       }
@@ -321,6 +327,7 @@
           console.log(`[JobMatch AI] Direct fill radio: "${label}" → "${best}"`);
           radio.el.checked = true;
           fireEvents(radio.el);
+          filledLabels.add(label);
           filled++;
         }
       }
@@ -346,6 +353,7 @@
         console.log(`[JobMatch AI] Direct fill checkbox: "${label}" → ${shouldCheck}`);
         cb.checked = shouldCheck;
         fireEvents(cb);
+        filledLabels.add(label);
         filled++;
       }
     });
@@ -392,7 +400,10 @@
 
       console.log(`[JobMatch AI] Direct fill React Select: "${label}" → "${answer}" (was "${currentText || '(empty)'}")`);
       const success = await fillReactSelect(selectContainer, answer);
-      if (success) filled++;
+      if (success) {
+        filledLabels.add(label);
+        filled++;
+      }
     }
 
     console.log(`[JobMatch AI] Direct fill complete: ${filled} fields filled`);

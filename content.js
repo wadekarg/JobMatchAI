@@ -4342,17 +4342,31 @@
             }
 
             // ── PASS 2: AI fill for remaining fields ──
+            // Get labels that Direct Fill already handled
+            const filledLabels = new Set();
+            if (window.__jobMatchFilledLabels) {
+              window.__jobMatchFilledLabels.forEach(l => filledLabels.add(l.toLowerCase()));
+            }
+
             _fieldMap = {};
             const questions = detectFormFields();
             // Filter out fields that were already filled in Pass 1
             const emptyQuestions = questions.filter(q => {
+              // Skip if this field's label was handled by direct fill
+              const qText = (q.question_text || '').toLowerCase();
+              if (qText && filledLabels.has(qText)) return false;
+              // Also check partial label match
+              for (const filled of filledLabels) {
+                if (filled.length > 5 && (qText.includes(filled) || filled.includes(qText))) return false;
+              }
+              // Check if element already has a value
               const el = q._el;
               if (!el) return true;
-              const val = el.value || el.textContent || '';
+              const val = el.value || '';
               return !val || val.trim().length === 0;
             });
 
-            console.log(`[JobMatch AI] iframe Pass 2 (AI): ${emptyQuestions.length} of ${questions.length} fields need AI`);
+            console.log(`[JobMatch AI] iframe Pass 2 (AI): ${emptyQuestions.length} of ${questions.length} fields need AI (${filledLabels.size} labels filled by Pass 1)`);
 
             if (emptyQuestions.length > 0) {
               const questionsForAI = emptyQuestions.map(q => {
