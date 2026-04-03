@@ -518,6 +518,7 @@
       .jm-section {
         margin-bottom: 16px;
         display: none;
+        overflow: hidden;
       }
 
       .jm-section h3 {
@@ -532,14 +533,19 @@
       .jm-tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px;
+        overflow: hidden;
       }
 
       .jm-tag {
-        padding: 4px 10px;
+        padding: 3px 8px;
         border-radius: 20px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 500;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .jm-tag-match { background: #d1fae5; color: #059669; }
