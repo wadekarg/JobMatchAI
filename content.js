@@ -3261,166 +3261,16 @@
    * No synonym groups — directly matches Q&A answer text to dropdown options.
    * Handles native <select>, React Select, and radio groups.
    */
+  /**
+   * Post-fill verification stub — disabled for now.
+   * The AI autofill with Q&A hints handles field selection directly.
+   */
   async function verifyAndCorrectFills() {
-    try {
-      const qaData = await sendMessage({ type: 'GET_QA_LIST' });
-      if (!qaData || qaData.length === 0) return;
-
-      // Build Q&A lookup: lowercase question → answer
-      const qaEntries = qaData.filter(qa => qa.answer).map(qa => ({
-        question: qa.question.toLowerCase().trim(),
-        answer: qa.answer.trim()
-      }));
-      console.log(`[JobMatch AI] Verification: ${qaEntries.length} Q&A answers loaded`);
-
-      let corrections = 0;
-
-      // Helper: find Q&A answer for a label
-      function findQAAnswer(label) {
-        const l = label.toLowerCase().trim();
-        if (!l) return null;
-        // Exact match
-        const exact = qaEntries.find(q => q.question === l);
-        if (exact) return exact.answer;
-        // Q&A question contains label or label contains question
-        const partial = qaEntries.find(q => q.question.includes(l) || l.includes(q.question));
-        if (partial) return partial.answer;
-        // Keyword overlap (for short labels like "Gender")
-        const keywords = l.split(/[\s,/]+/).filter(k => k.length > 2);
-        if (keywords.length > 0) {
-          const kw = qaEntries.find(q => keywords.some(k => q.question.includes(k)));
-          if (kw) return kw.answer;
-        }
-        return null;
-      }
-
-      // Helper: find best matching option text for a Q&A answer
-      function bestOptionMatch(optionTexts, qaAnswer) {
-        const a = qaAnswer.toLowerCase().trim();
-        // 1. Exact match
-        const exact = optionTexts.find(o => o.toLowerCase().trim() === a);
-        if (exact) return exact;
-        // 2. Option contains answer (e.g., "Male" in "Male (including transgender male)")
-        const contains = optionTexts.find(o => o.toLowerCase().includes(a));
-        if (contains) return contains;
-        // 3. Answer contains option (e.g., QA="Male", option="Man")
-        //    Use synonym pairs for common swaps only
-        const swaps = { 'male': 'man', 'man': 'male', 'female': 'woman', 'woman': 'female' };
-        const swapped = swaps[a];
-        if (swapped) {
-          const s = optionTexts.find(o => o.toLowerCase().trim() === swapped || o.toLowerCase().includes(swapped));
-          if (s) return s;
-        }
-        return null;
-      }
-
-      // ── 1. Scan React Select dropdowns (Greenhouse uses these for EEO) ──
-      const singleValueEls = document.querySelectorAll(
-        '[class*="single-value"], [class*="singleValue"], [class*="Select-value-label"]'
-      );
-      console.log(`[JobMatch AI] Verification: found ${singleValueEls.length} React Select values`);
-
-      for (const display of singleValueEls) {
-        const currentText = (display.textContent || '').trim();
-        if (!currentText || currentText.length > 80 || /^select/i.test(currentText)) continue;
-
-        // Find the label for this dropdown
-        let label = '';
-        // Walk up to find a label element
-        let el = display;
-        for (let i = 0; i < 8 && el; i++) {
-          el = el.parentElement;
-          if (!el) break;
-          const labelEl = el.querySelector('label');
-          if (labelEl && !labelEl.contains(display)) {
-            label = labelEl.textContent.trim().replace(/\*$/, '').trim();
-            break;
-          }
-        }
-        // Try aria-label
-        if (!label) {
-          const container = display.closest('[class*="css-"]');
-          if (container) {
-            const input = container.querySelector('input');
-            label = input?.getAttribute('aria-label') || '';
-          }
-        }
-
-        if (!label) continue;
-        console.log(`[JobMatch AI] Verification: React Select "${label}" = "${currentText}"`);
-
-        const qaAnswer = findQAAnswer(label);
-        if (!qaAnswer) continue;
-        if (currentText.toLowerCase() === qaAnswer.toLowerCase()) continue;
-
-        // Check if a better option exists by opening the dropdown
-        console.log(`[JobMatch AI] FIX: "${label}" shows "${currentText}", Q&A says "${qaAnswer}". Opening...`);
-
-        const control = display.closest('[class*="control"], [class*="Control"]')
-          || display.parentElement?.parentElement;
-        if (!control) continue;
-
-        // Open the dropdown
-        control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        control.click();
-
-        // Wait for options to appear
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        const allOptions = document.querySelectorAll('[role="option"]');
-        const optionTexts = Array.from(allOptions).map(o => o.textContent.trim());
-        console.log(`[JobMatch AI] Options: [${optionTexts.join(', ')}]`);
-
-        const best = bestOptionMatch(optionTexts, qaAnswer);
-        if (best) {
-          const optEl = Array.from(allOptions).find(o => o.textContent.trim() === best);
-          if (optEl) {
-            console.log(`[JobMatch AI] Clicking option "${best}"`);
-            optEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            optEl.click();
-            corrections++;
-          }
-        } else {
-          // Close dropdown
-          document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-          console.log(`[JobMatch AI] No matching option for "${qaAnswer}" in [${optionTexts.join(', ')}]`);
-        }
-
-        // Small delay between dropdowns
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      // ── 2. Scan native <select> elements ──
-      document.querySelectorAll('select').forEach(sel => {
-        let label = sel.labels?.[0]?.textContent?.trim()
-          || sel.closest('label')?.textContent?.trim()
-          || sel.getAttribute('aria-label') || '';
-        if (!label) return;
-
-        const qaAnswer = findQAAnswer(label);
-        if (!qaAnswer) return;
-
-        const currentText = sel.options?.[sel.selectedIndex]?.text?.trim() || '';
-        if (currentText.toLowerCase() === qaAnswer.toLowerCase()) return;
-
-        const optionTexts = Array.from(sel.options).map(o => o.text.trim());
-        const best = bestOptionMatch(optionTexts, qaAnswer);
-        if (best) {
-          const bestOpt = Array.from(sel.options).find(o => o.text.trim() === best);
-          if (bestOpt) {
-            console.log(`[JobMatch AI] FIX <select> "${label}": "${currentText}" → "${best}"`);
-            sel.value = bestOpt.value;
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            corrections++;
-          }
-        }
-      });
-
-      console.log(`[JobMatch AI] Verification: ${corrections} correction(s) made`);
-    } catch (err) {
-      console.warn('[JobMatch AI] Post-fill verification failed:', err);
-    }
+    // Verification removed — was causing incorrect corrections
+    // (opening wrong dropdowns, matching wrong Q&A entries).
+    // The AI prompt now includes Q&A hints per field for direct matching.
   }
+
 
 
   async function fillFormFromAnswers(answers) {
@@ -4475,12 +4325,13 @@
               return clean;
             });
 
-            // Process in batches of 10 to avoid AI output truncation
-            const BATCH_SIZE = 10;
+            // Process in smaller batches to avoid AI output truncation
+            const BATCH_SIZE = 6;
             let totalFilled = 0;
             for (let i = 0; i < questionsForAI.length; i += BATCH_SIZE) {
               const batch = questionsForAI.slice(i, i + BATCH_SIZE);
-              console.log(`[JobMatch AI] iframe: processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} fields)`);
+              const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+              console.log(`[JobMatch AI] iframe: processing batch ${batchNum} (${batch.length} fields)`);
               try {
                 const response = await sendMessage({
                   type: 'GENERATE_AUTOFILL',
@@ -4490,7 +4341,16 @@
                 const { filled } = await fillFormFromAnswers(answers);
                 totalFilled += filled;
               } catch (batchErr) {
-                console.warn(`[JobMatch AI] iframe batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, batchErr.message);
+                console.warn(`[JobMatch AI] iframe batch ${batchNum} failed: ${batchErr.message}. Retrying...`);
+                // Retry failed batch once with even smaller sub-batches
+                for (const field of batch) {
+                  try {
+                    const resp = await sendMessage({ type: 'GENERATE_AUTOFILL', formFields: [field] });
+                    const ans = Array.isArray(resp) ? resp : (resp.answers || []);
+                    const { filled } = await fillFormFromAnswers(ans);
+                    totalFilled += filled;
+                  } catch (_) {}
+                }
               }
             }
 
