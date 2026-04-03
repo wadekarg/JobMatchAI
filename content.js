@@ -3255,342 +3255,173 @@
   }
 
   /**
-   * Post-fill verification: scans ALL select elements and radio groups
-   * on the page. If any selected value conflicts with the user's Q&A
-   * answers (using synonym matching), corrects it.
-   *
-   * This is intentionally brute-force — it doesn't try to match field
-   * labels. Instead it checks: "is the currently selected value in a
-   * demographic synonym group that conflicts with a Q&A answer?"
+  /**
+   * Post-fill verification: finds all dropdowns on the page, reads their
+   * label and options, matches against Q&A answers, and selects the correct one.
+   * No synonym groups — directly matches Q&A answer text to dropdown options.
+   * Handles native <select>, React Select, and radio groups.
    */
   async function verifyAndCorrectFills() {
     try {
       const qaData = await sendMessage({ type: 'GET_QA_LIST' });
       if (!qaData || qaData.length === 0) return;
 
-      // Build a map of synonym group → user's Q&A answer
-      // e.g., if Q&A has Gender="Male", then the "male" group maps to "Male"
-      const qaByGroup = new Map();
-      const demographicQaKeys = ['gender', 'gender identity', 'sex', 'race', 'ethnicity',
-        'hispanic', 'veteran', 'disability', 'pronoun', 'sexual orientation'];
-
-      for (const qa of qaData) {
-        if (!qa.answer) continue;
-        const qLower = qa.question.toLowerCase();
-        if (!demographicQaKeys.some(k => qLower.includes(k))) continue;
-
-        const savedGroup = _findSynonymGroup(qa.answer.toLowerCase());
-        if (savedGroup) {
-          // Store: this synonym group → the user wants this answer
-          qaByGroup.set(savedGroup, qa.answer);
-        }
-      }
-
-      if (qaByGroup.size === 0) {
-        console.log('[JobMatch AI] Verification: no demographic Q&A answers found with matching synonym groups');
-        return;
-      }
-
-      console.log(`[JobMatch AI] Verification: ${qaByGroup.size} demographic Q&A groups loaded:`);
-      for (const [group, answer] of qaByGroup) {
-        console.log(`  → Group [${group.join(', ')}] = "${answer}"`);
-      }
+      // Build Q&A lookup: lowercase question → answer
+      const qaEntries = qaData.filter(qa => qa.answer).map(qa => ({
+        question: qa.question.toLowerCase().trim(),
+        answer: qa.answer.trim()
+      }));
+      console.log(`[JobMatch AI] Verification: ${qaEntries.length} Q&A answers loaded`);
 
       let corrections = 0;
 
-      // Scan ALL <select> elements on the page
-      document.querySelectorAll('select').forEach(sel => {
-        const selectedText = sel.options?.[sel.selectedIndex]?.text?.trim().toLowerCase() || '';
-        if (!selectedText) return;
-        console.log(`[JobMatch AI] Verification: checking <select> "${sel.name || sel.id || '?'}" = "${selectedText}"`);
-
-        const currentGroup = _findSynonymGroup(selectedText);
-        if (!currentGroup) return;
-
-        // Check if this value conflicts with any Q&A answer
-        for (const [savedGroup, savedAnswer] of qaByGroup) {
-          // Same category type? (both are gender groups, both are race groups, etc.)
-          // We check by seeing if the current and saved are in DIFFERENT groups
-          // but the same "category" (gender-related, race-related, etc.)
-          if (currentGroup === savedGroup) continue; // same group = correct
-
-          // Check if they're in the same category (e.g., both gender-related)
-          const genderGroups = _genderGroups;
-          const raceGroups = _raceGroups;
-          const orientationGroups = _orientationGroups;
-
-          const currentInGender = genderGroups.includes(currentGroup);
-          const savedInGender = genderGroups.includes(savedGroup);
-          const currentInRace = raceGroups.includes(currentGroup);
-          const savedInRace = raceGroups.includes(savedGroup);
-          const currentInOrientation = orientationGroups.includes(currentGroup);
-          const savedInOrientation = orientationGroups.includes(savedGroup);
-
-          const sameCategory = (currentInGender && savedInGender) ||
-                               (currentInRace && savedInRace) ||
-                               (currentInOrientation && savedInOrientation);
-
-          if (sameCategory) {
-            // WRONG — find the correct option and select it
-            const correctOption = Array.from(sel.options).find(o => {
-              const oText = o.text.trim().toLowerCase();
-              return savedGroup.some(s => oText.includes(s));
-            });
-            if (correctOption) {
-              console.log(`[JobMatch AI] Verification fix: select was "${selectedText}", correcting to "${correctOption.text}" (Q&A: "${savedAnswer}")`);
-              sel.value = correctOption.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
-              corrections++;
-            }
-            break;
-          }
+      // Helper: find Q&A answer for a label
+      function findQAAnswer(label) {
+        const l = label.toLowerCase().trim();
+        if (!l) return null;
+        // Exact match
+        const exact = qaEntries.find(q => q.question === l);
+        if (exact) return exact.answer;
+        // Q&A question contains label or label contains question
+        const partial = qaEntries.find(q => q.question.includes(l) || l.includes(q.question));
+        if (partial) return partial.answer;
+        // Keyword overlap (for short labels like "Gender")
+        const keywords = l.split(/[\s,/]+/).filter(k => k.length > 2);
+        if (keywords.length > 0) {
+          const kw = qaEntries.find(q => keywords.some(k => q.question.includes(k)));
+          if (kw) return kw.answer;
         }
-      });
-
-      // Scan ALL radio button groups
-      const radioGroups = {};
-      document.querySelectorAll('input[type="radio"]').forEach(radio => {
-        const name = radio.name;
-        if (!name) return;
-        if (!radioGroups[name]) radioGroups[name] = [];
-        radioGroups[name].push(radio);
-      });
-
-      for (const [name, radios] of Object.entries(radioGroups)) {
-        const checked = radios.find(r => r.checked);
-        if (!checked) continue;
-        const label = (checked.labels?.[0]?.textContent || checked.value || '').trim().toLowerCase();
-        const currentGroup = _findSynonymGroup(label);
-        if (!currentGroup) continue;
-
-        for (const [savedGroup, savedAnswer] of qaByGroup) {
-          if (currentGroup === savedGroup) continue;
-
-          const genderGroups = _genderGroups;
-          const raceGroups = _raceGroups;
-          const orientationGroups = _orientationGroups;
-
-          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
-                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
-                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
-
-          if (sameCategory) {
-            const correctRadio = radios.find(r => {
-              const rLabel = (r.labels?.[0]?.textContent || r.value || '').trim().toLowerCase();
-              return savedGroup.some(s => rLabel.includes(s));
-            });
-            if (correctRadio) {
-              console.log(`[JobMatch AI] Verification fix: radio was "${label}", correcting to "${correctRadio.labels?.[0]?.textContent || correctRadio.value}" (Q&A: "${savedAnswer}")`);
-              correctRadio.checked = true;
-              correctRadio.dispatchEvent(new Event('change', { bubbles: true }));
-              correctRadio.dispatchEvent(new Event('input', { bubbles: true }));
-              corrections++;
-            }
-            break;
-          }
-        }
+        return null;
       }
 
-      // Scan custom dropdowns and any element showing a selected value
-      console.log(`[JobMatch AI] Verification: scanning ${Object.keys(_fieldMap).length} _fieldMap entries...`);
-      for (const [qid, ref] of Object.entries(_fieldMap)) {
-        if (!ref || !ref.el) continue;
-        // Get visible selected text from the element
-        let currentVal = '';
-        if (ref.type === 'custom_dropdown' || ref.type === 'dropdown') {
-          currentVal = ref.el.value || ref.el.textContent || '';
-          if (!currentVal || currentVal.length > 200) {
-            const parent = ref.el.closest('[class*="select"], [class*="dropdown"], [class*="field"]');
-            if (parent) {
-              const display = parent.querySelector('[class*="single-value"], [class*="selected"], [class*="placeholder"]');
-              if (display) currentVal = display.textContent || '';
-            }
+      // Helper: find best matching option text for a Q&A answer
+      function bestOptionMatch(optionTexts, qaAnswer) {
+        const a = qaAnswer.toLowerCase().trim();
+        // 1. Exact match
+        const exact = optionTexts.find(o => o.toLowerCase().trim() === a);
+        if (exact) return exact;
+        // 2. Option contains answer (e.g., "Male" in "Male (including transgender male)")
+        const contains = optionTexts.find(o => o.toLowerCase().includes(a));
+        if (contains) return contains;
+        // 3. Answer contains option (e.g., QA="Male", option="Man")
+        //    Use synonym pairs for common swaps only
+        const swaps = { 'male': 'man', 'man': 'male', 'female': 'woman', 'woman': 'female' };
+        const swapped = swaps[a];
+        if (swapped) {
+          const s = optionTexts.find(o => o.toLowerCase().trim() === swapped || o.toLowerCase().includes(swapped));
+          if (s) return s;
+        }
+        return null;
+      }
+
+      // ── 1. Scan React Select dropdowns (Greenhouse uses these for EEO) ──
+      const singleValueEls = document.querySelectorAll(
+        '[class*="single-value"], [class*="singleValue"], [class*="Select-value-label"]'
+      );
+      console.log(`[JobMatch AI] Verification: found ${singleValueEls.length} React Select values`);
+
+      for (const display of singleValueEls) {
+        const currentText = (display.textContent || '').trim();
+        if (!currentText || currentText.length > 80 || /^select/i.test(currentText)) continue;
+
+        // Find the label for this dropdown
+        let label = '';
+        // Walk up to find a label element
+        let el = display;
+        for (let i = 0; i < 8 && el; i++) {
+          el = el.parentElement;
+          if (!el) break;
+          const labelEl = el.querySelector('label');
+          if (labelEl && !labelEl.contains(display)) {
+            label = labelEl.textContent.trim().replace(/\*$/, '').trim();
+            break;
+          }
+        }
+        // Try aria-label
+        if (!label) {
+          const container = display.closest('[class*="css-"]');
+          if (container) {
+            const input = container.querySelector('input');
+            label = input?.getAttribute('aria-label') || '';
+          }
+        }
+
+        if (!label) continue;
+        console.log(`[JobMatch AI] Verification: React Select "${label}" = "${currentText}"`);
+
+        const qaAnswer = findQAAnswer(label);
+        if (!qaAnswer) continue;
+        if (currentText.toLowerCase() === qaAnswer.toLowerCase()) continue;
+
+        // Check if a better option exists by opening the dropdown
+        console.log(`[JobMatch AI] FIX: "${label}" shows "${currentText}", Q&A says "${qaAnswer}". Opening...`);
+
+        const control = display.closest('[class*="control"], [class*="Control"]')
+          || display.parentElement?.parentElement;
+        if (!control) continue;
+
+        // Open the dropdown
+        control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        control.click();
+
+        // Wait for options to appear
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const allOptions = document.querySelectorAll('[role="option"]');
+        const optionTexts = Array.from(allOptions).map(o => o.textContent.trim());
+        console.log(`[JobMatch AI] Options: [${optionTexts.join(', ')}]`);
+
+        const best = bestOptionMatch(optionTexts, qaAnswer);
+        if (best) {
+          const optEl = Array.from(allOptions).find(o => o.textContent.trim() === best);
+          if (optEl) {
+            console.log(`[JobMatch AI] Clicking option "${best}"`);
+            optEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            optEl.click();
+            corrections++;
           }
         } else {
-          currentVal = ref.el.value || ref.el.textContent || '';
+          // Close dropdown
+          document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          console.log(`[JobMatch AI] No matching option for "${qaAnswer}" in [${optionTexts.join(', ')}]`);
         }
-        currentVal = currentVal.trim().toLowerCase();
-        if (!currentVal || currentVal.length > 50) continue;
-        console.log(`[JobMatch AI] Verification: _fieldMap "${ref.questionText || qid}" (${ref.type}) = "${currentVal}"`);
 
-        const currentGroup = _findSynonymGroup(currentVal);
-        if (!currentGroup) continue;
-
-        for (const [savedGroup, savedAnswer] of qaByGroup) {
-          if (currentGroup === savedGroup) continue;
-
-          const genderGroups = _genderGroups;
-          const raceGroups = _raceGroups;
-          const orientationGroups = _orientationGroups;
-
-          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
-                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
-                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
-
-          if (sameCategory) {
-            console.log(`[JobMatch AI] Verification fix (fieldMap): "${ref.questionText || qid}" was "${currentVal}", Q&A wants "${savedAnswer}"`);
-            // Try to correct via our fill functions
-            if (ref.type === 'dropdown' && ref.optionTexts) {
-              const correctOption = ref.optionTexts.find(o =>
-                savedGroup.some(s => o.toLowerCase().includes(s))
-              );
-              if (correctOption) {
-                fillSelectByText(ref.el, correctOption, ref.optionMap, ref.optionTexts);
-                corrections++;
-              }
-            } else if (ref.type === 'custom_dropdown') {
-              // For custom dropdowns, try clicking to open and select the right option
-              try {
-                await fillCustomDropdown(ref.el, savedAnswer);
-                corrections++;
-              } catch (_) {}
-            }
-            break;
-          }
-        }
+        // Small delay between dropdowns
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // FINAL PASS: Brute-force scan ALL form elements in the ENTIRE document
-      // including ones not in _fieldMap.
-      console.log('[JobMatch AI] Verification: final brute-force scan...');
-
-      // Scan native <select> elements
-      console.log(`[JobMatch AI] Verification: found ${document.querySelectorAll('select').length} native selects`);
+      // ── 2. Scan native <select> elements ──
       document.querySelectorAll('select').forEach(sel => {
-        const selectedIdx = sel.selectedIndex;
-        if (selectedIdx < 0) return;
-        const selectedText = (sel.options[selectedIdx]?.text || '').trim().toLowerCase();
-        if (!selectedText || selectedText.length > 80) return;
+        let label = sel.labels?.[0]?.textContent?.trim()
+          || sel.closest('label')?.textContent?.trim()
+          || sel.getAttribute('aria-label') || '';
+        if (!label) return;
 
-        const currentGroup = _findSynonymGroup(selectedText);
-        if (!currentGroup) return;
+        const qaAnswer = findQAAnswer(label);
+        if (!qaAnswer) return;
 
-        for (const [savedGroup, savedAnswer] of qaByGroup) {
-          if (currentGroup === savedGroup) continue;
+        const currentText = sel.options?.[sel.selectedIndex]?.text?.trim() || '';
+        if (currentText.toLowerCase() === qaAnswer.toLowerCase()) return;
 
-          const genderGroups = _genderGroups;
-          const raceGroups = _raceGroups;
-          const orientationGroups = _orientationGroups;
-          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
-                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
-                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
-
-          if (sameCategory) {
-            // Find the correct option
-            const correctOpt = Array.from(sel.options).find(o =>
-              savedGroup.some(s => o.text.trim().toLowerCase().includes(s))
-            );
-            if (correctOpt) {
-              console.log(`[JobMatch AI] BRUTE FORCE FIX: <select name="${sel.name}"> was "${selectedText}", setting to "${correctOpt.text}" (Q&A: "${savedAnswer}")`);
-              sel.value = correctOpt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
-              corrections++;
-            }
-            break;
+        const optionTexts = Array.from(sel.options).map(o => o.text.trim());
+        const best = bestOptionMatch(optionTexts, qaAnswer);
+        if (best) {
+          const bestOpt = Array.from(sel.options).find(o => o.text.trim() === best);
+          if (bestOpt) {
+            console.log(`[JobMatch AI] FIX <select> "${label}": "${currentText}" → "${best}"`);
+            sel.value = bestOpt.value;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            corrections++;
           }
         }
       });
 
-      // Scan for React Select / custom dropdown components
-      // Greenhouse uses react-select which renders as:
-      //   <div class="css-*"> (container)
-      //     <div class="css-*"> (control)
-      //       <div class="css-*"> (single-value or placeholder)
-      // We scan ALL elements that could show a selected demographic value
-      const reactSelectSelectors = [
-        '[class*="single-value"]',        // react-select v5+
-        '[class*="singleValue"]',         // react-select camelCase
-        '[class*="Select-value-label"]',  // react-select v1
-        '[class*="selected-value"]',      // generic
-        '[class*="select__value"]',       // BEM style
-        '[role="combobox"]',              // ARIA combobox
-      ];
-      const allDisplayEls = document.querySelectorAll(reactSelectSelectors.join(', '));
-      console.log(`[JobMatch AI] Verification: found ${allDisplayEls.length} React Select display elements`);
-
-      allDisplayEls.forEach(display => {
-        const text = (display.textContent || '').trim();
-        const textLower = text.toLowerCase();
-        if (!textLower || textLower.length > 80 || textLower === 'select...' || textLower === 'select') return;
-
-        console.log(`[JobMatch AI] Verification: React Select shows "${text}"`);
-
-        const currentGroup = _findSynonymGroup(textLower);
-        if (!currentGroup) return;
-
-        for (const [savedGroup, savedAnswer] of qaByGroup) {
-          if (currentGroup === savedGroup) continue;
-
-          const genderGroups = _genderGroups;
-          const raceGroups = _raceGroups;
-          const orientationGroups = _orientationGroups;
-          const sameCategory = (genderGroups.includes(currentGroup) && genderGroups.includes(savedGroup)) ||
-                               (raceGroups.includes(currentGroup) && raceGroups.includes(savedGroup)) ||
-                               (orientationGroups.includes(currentGroup) && orientationGroups.includes(savedGroup));
-
-          if (sameCategory) {
-            console.log(`[JobMatch AI] REACT SELECT FIX: "${text}" conflicts with Q&A "${savedAnswer}". Attempting correction...`);
-
-            // Strategy: click the container to open the dropdown, then find and click the right option
-            const container = display.closest('[class*="select"], [class*="Select"], [class*="css-"]')
-              || display.parentElement?.parentElement;
-
-            if (container) {
-              // Try to find the input element inside the react-select to type into
-              const input = container.querySelector('input[role="combobox"], input[type="text"], input');
-              const control = container.querySelector('[class*="control"], [class*="Control"]') || container;
-
-              // Click to open
-              control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-              control.click();
-
-              // Wait briefly for options to render, then find and click the right one
-              setTimeout(() => {
-                // Look for option elements
-                const optionSelectors = '[role="option"], [class*="option"], [class*="Option"]';
-                const options = document.querySelectorAll(optionSelectors);
-                console.log(`[JobMatch AI] React Select: found ${options.length} options after opening`);
-
-                let found = false;
-                options.forEach(opt => {
-                  if (found) return;
-                  const optText = opt.textContent.trim().toLowerCase();
-                  if (optText === savedAnswer.toLowerCase() || savedGroup.some(s => {
-                    if (optText === s) return true;
-                    const re = new RegExp('\\b' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-                    return re.test(optText);
-                  })) {
-                    console.log(`[JobMatch AI] React Select: clicking option "${opt.textContent.trim()}"`);
-                    opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                    opt.click();
-                    corrections++;
-                    found = true;
-                  }
-                });
-
-                if (!found) {
-                  // Close the dropdown if we couldn't find the right option
-                  document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                  console.log('[JobMatch AI] React Select: could not find matching option');
-                }
-              }, 300);
-            }
-            break;
-          }
-        }
-      });
-
-      if (corrections > 0) {
-        console.log(`[JobMatch AI] Verification corrected ${corrections} field(s)`);
-      } else {
-        console.log('[JobMatch AI] Verification: no corrections needed or no conflicts found');
-      }
+      console.log(`[JobMatch AI] Verification: ${corrections} correction(s) made`);
     } catch (err) {
       console.warn('[JobMatch AI] Post-fill verification failed:', err);
     }
   }
+
 
   async function fillFormFromAnswers(answers) {
     // Handle array format (new) or flat object (legacy)
