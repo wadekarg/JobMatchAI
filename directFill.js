@@ -255,6 +255,9 @@
       // Skip inputs that are part of React Select (combobox search inputs)
       if (input.getAttribute('role') === 'combobox') continue;
       if (input.getAttribute('aria-autocomplete')) continue;
+      // Skip hidden inputs inside React Select containers
+      if (input.closest('[class*="css-"][class*="-container"]') || input.closest('[class*="select__"]')) continue;
+      if (input.type === 'hidden') continue;
 
       const label = getElementLabel(input);
       if (!label) continue;
@@ -348,42 +351,48 @@
     });
 
     // ── 5. React Select dropdowns ──
-    const reactSelects = document.querySelectorAll(
-      '[class*="single-value"], [class*="singleValue"], [class*="Select-value-label"]'
-    );
+    // Find all React Select containers by looking for the input[role="combobox"] inside them
+    const reactInputs = document.querySelectorAll('input[role="combobox"]');
+    const processedContainers = new Set();
+    console.log(`[JobMatch AI] Direct fill: found ${reactInputs.length} React Select inputs`);
 
-    for (const display of reactSelects) {
-      const currentText = display.textContent?.trim() || '';
-
-      // Find the label
-      let label = '';
-      let el = display;
-      for (let i = 0; i < 8 && el; i++) {
-        el = el.parentElement;
-        if (!el) break;
-        const labelEl = el.querySelector('label');
-        if (labelEl && !labelEl.contains(display)) {
-          label = cleanLabel(labelEl.textContent);
-          break;
-        }
+    for (const input of reactInputs) {
+      // Walk up to find the React Select container
+      let container = input.closest('[class*="css-"]');
+      // Go up a few levels to find the full container with the label
+      let fieldWrapper = container;
+      for (let i = 0; i < 6 && fieldWrapper; i++) {
+        fieldWrapper = fieldWrapper.parentElement;
+        if (!fieldWrapper) break;
+        if (fieldWrapper.querySelector('label')) break;
       }
+
+      if (!fieldWrapper || processedContainers.has(fieldWrapper)) continue;
+      processedContainers.add(fieldWrapper);
+
+      // Find label
+      const labelEl = fieldWrapper.querySelector('label');
+      const label = labelEl ? cleanLabel(labelEl.textContent) : '';
       if (!label) continue;
+
+      // Get current selected value
+      const singleValue = fieldWrapper.querySelector('[class*="single-value"], [class*="singleValue"]');
+      const currentText = singleValue?.textContent?.trim() || '';
 
       const answer = matchQA(label, qaList, profile);
       if (!answer) continue;
 
       // Check if already correct
-      if (currentText.toLowerCase() === answer.toLowerCase()) continue;
-      if (currentText.toLowerCase().includes(answer.toLowerCase())) continue;
+      if (currentText && currentText.toLowerCase() === answer.toLowerCase()) continue;
 
-      // Find container and fill
-      const container = display.closest('[class*="css-"]')?.parentElement
-        || display.closest('[class*="select"], [class*="Select"]');
-      if (container) {
-        console.log(`[JobMatch AI] Direct fill React Select: "${label}" → "${answer}" (was "${currentText}")`);
-        const success = await fillReactSelect(container, answer);
-        if (success) filled++;
-      }
+      // Find the inner React Select container for clicking
+      const selectContainer = input.closest('[class*="css-"]')?.parentElement
+        || input.closest('[class*="select"], [class*="Select"]');
+      if (!selectContainer) continue;
+
+      console.log(`[JobMatch AI] Direct fill React Select: "${label}" → "${answer}" (was "${currentText || '(empty)'}")`);
+      const success = await fillReactSelect(selectContainer, answer);
+      if (success) filled++;
     }
 
     console.log(`[JobMatch AI] Direct fill complete: ${filled} fields filled`);
