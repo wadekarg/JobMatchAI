@@ -2246,14 +2246,20 @@
       if (questions.length === 0) {
         // No fields in top frame — try iframes via broadcast
         console.log('[JobMatch AI] No fields in top frame, broadcasting to iframes...');
+        setStatus('Found embedded form. Filling fields...', 'info');
         try {
           const iframeResult = await chrome.runtime.sendMessage({ type: 'AUTOFILL_IN_FRAMES' });
-          if (iframeResult?.filled > 0) {
-            setStatus(`Filled ${iframeResult.filled} fields in embedded form.`, 'success');
-            setTimeout(clearStatus, 3000);
+          if (iframeResult?.data?.filled > 0) {
+            setStatus(`Filled ${iframeResult.data.filled} fields in embedded form.`, 'success');
+            setTimeout(clearStatus, 5000);
+            return;
+          } else if (iframeResult?.success && iframeResult?.data?.filled === 0) {
+            setStatus('Embedded form found but no fields could be filled.', 'error');
             return;
           }
-        } catch (_) {}
+        } catch (iframeErr) {
+          console.warn('[JobMatch AI] iframe broadcast error:', iframeErr);
+        }
         setStatus('No form fields found on this page.', 'error');
         return;
       }
@@ -4337,13 +4343,27 @@
               delete clean._radios;
               return clean;
             });
-            const response = await sendMessage({
-              type: 'GENERATE_AUTOFILL',
-              formFields: questionsForAI
-            });
-            const answers = response.answers || response;
-            const { filled } = await fillFormFromAnswers(answers);
-            sendResponse({ filled });
+
+            // Process in batches of 10 to avoid AI output truncation
+            const BATCH_SIZE = 10;
+            let totalFilled = 0;
+            for (let i = 0; i < questionsForAI.length; i += BATCH_SIZE) {
+              const batch = questionsForAI.slice(i, i + BATCH_SIZE);
+              console.log(`[JobMatch AI] iframe: processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} fields)`);
+              try {
+                const response = await sendMessage({
+                  type: 'GENERATE_AUTOFILL',
+                  formFields: batch
+                });
+                const answers = Array.isArray(response) ? response : (response.answers || []);
+                const { filled } = await fillFormFromAnswers(answers);
+                totalFilled += filled;
+              } catch (batchErr) {
+                console.warn(`[JobMatch AI] iframe batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, batchErr.message);
+              }
+            }
+
+            sendResponse({ filled: totalFilled });
           } catch (err) {
             console.error('[JobMatch AI] iframe autofill error:', err);
             sendResponse({ filled: 0, error: err.message });
