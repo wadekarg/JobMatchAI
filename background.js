@@ -690,11 +690,31 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills, cus
 
   // Insert custom bullets after the last bullet of their target job/project
   let insertedCount = 0;
-  if (customBullets && customBullets.length > 0 && profile.experience) {
+
+  // Build a list of all company/title names to detect section boundaries
+  const allSectionNames = [];
+  if (profile.experience) {
+    profile.experience.forEach(exp => {
+      if (exp.company) allSectionNames.push(exp.company.toLowerCase());
+      if (exp.title) allSectionNames.push(exp.title.toLowerCase());
+    });
+  }
+  if (profile.projects) {
+    profile.projects.forEach(proj => {
+      const name = proj.name || proj.title || '';
+      if (name) allSectionNames.push(name.toLowerCase());
+    });
+  }
+  // Common resume section headers that signal a new section
+  const sectionHeaders = ['education', 'skills', 'projects', 'certifications', 'awards',
+    'publications', 'volunteer', 'interests', 'references', 'summary', 'objective',
+    'technical skills', 'core competencies', 'professional development'];
+
+  if (customBullets && customBullets.length > 0) {
     for (const custom of customBullets) {
       // Find the target job's title and company to locate it in the DOCX
       let targetText = '';
-      if (custom.targetSection === 'experience' && profile.experience[custom.targetIdx]) {
+      if (custom.targetSection === 'experience' && profile.experience?.[custom.targetIdx]) {
         const exp = profile.experience[custom.targetIdx];
         targetText = (exp.company || exp.title || '').toLowerCase();
       } else if (custom.targetSection === 'projects' && profile.projects?.[custom.targetIdx]) {
@@ -704,36 +724,45 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills, cus
 
       if (!targetText || !custom.text) continue;
 
-      // Find paragraphs belonging to this job by looking for the company/title,
-      // then find the last content paragraph in that section
       const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
-      let lastMatchIdx = -1;
-      let lastMatchEnd = -1;
+      let lastContentIdx = -1;
+      let lastContentEnd = -1;
       let foundTarget = false;
       let match;
 
       while ((match = paragraphRegex.exec(docXml)) !== null) {
-        const paraText = extractParagraphText(match[0]).toLowerCase();
-        if (paraText.includes(targetText)) {
+        const paraText = extractParagraphText(match[0]);
+        const paraLower = paraText.toLowerCase().trim();
+
+        // Found the target section
+        if (paraLower.includes(targetText)) {
           foundTarget = true;
+          continue;
         }
-        if (foundTarget && paraText.length > 10) {
-          lastMatchIdx = match.index;
-          lastMatchEnd = match.index + match[0].length;
-        }
-        // Stop if we hit a new section header (short text after finding content)
-        if (foundTarget && paraText.length > 0 && paraText.length <= 5 && lastMatchIdx !== -1) {
-          break;
+
+        if (foundTarget) {
+          // Check if we've hit a NEW section (another job, project, or section header)
+          const hitsNewSection = allSectionNames.some(name =>
+            name !== targetText && paraLower.includes(name) && paraLower.length < 100
+          );
+          const hitsSectionHeader = sectionHeaders.some(h => paraLower === h || paraLower.startsWith(h + ':'));
+
+          if (hitsNewSection || hitsSectionHeader) {
+            break; // Stop — we've left the target section
+          }
+
+          // Track content paragraphs (skip empty/very short ones)
+          if (paraText.trim().length > 10) {
+            lastContentIdx = match.index;
+            lastContentEnd = match.index + match[0].length;
+          }
         }
       }
 
-      if (lastMatchIdx !== -1) {
-        // Get the last paragraph to clone its formatting
-        const lastPara = docXml.substring(lastMatchIdx, lastMatchEnd);
-        // Create new paragraph with same formatting but new text
+      if (lastContentIdx !== -1) {
+        const lastPara = docXml.substring(lastContentIdx, lastContentEnd);
         const newPara = replaceParagraphText(lastPara, custom.text);
-        // Insert after the last paragraph of this section
-        docXml = docXml.substring(0, lastMatchEnd) + newPara + docXml.substring(lastMatchEnd);
+        docXml = docXml.substring(0, lastContentEnd) + newPara + docXml.substring(lastContentEnd);
         insertedCount++;
       }
     }
