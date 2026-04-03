@@ -3236,8 +3236,15 @@
   ];
 
   function _findSynonymGroup(val) {
-    const lower = val.toLowerCase();
-    return _synonymGroups.find(g => g.some(s => lower.includes(s)));
+    const lower = val.toLowerCase().trim();
+    // Use word boundary matching to avoid "woman" matching "man"
+    // Check exact match first, then word boundary regex
+    return _synonymGroups.find(g => g.some(s => {
+      if (lower === s) return true;
+      // Word boundary: "man" should not match "woman"
+      const re = new RegExp('\\b' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      return re.test(lower);
+    }));
   }
 
   /**
