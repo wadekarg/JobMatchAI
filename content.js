@@ -2231,7 +2231,9 @@
    * @async
    */
   async function autofillForm() {
+    console.log('[JobMatch AI] AutoFill button clicked');
     const btn = shadowRoot.getElementById('jmAutofill');
+    if (!btn) { console.error('[JobMatch AI] AutoFill button not found'); return; }
     btn.disabled = true;
     btn.innerHTML = '<span class="jm-spinner"></span> Scanning form...';
 
