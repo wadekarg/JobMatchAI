@@ -3633,6 +3633,9 @@
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
       const jd = extractJobDescription();
+      // Re-scrape company fresh (cached value may be stale or wrong)
+      const freshCompany = extractCompany() || currentAnalysis.company || '';
+      const freshTitle = extractJobTitle() || currentAnalysis.title || '';
       const clResult = await sendMessage({
         type: 'GENERATE_COVER_LETTER',
         jobDescription: jd,
@@ -3641,8 +3644,8 @@
           matchScore: currentAnalysis.matchScore
         },
         jobMeta: {
-          title: currentAnalysis.title || '',
-          company: currentAnalysis.company || '',
+          title: freshTitle,
+          company: freshCompany,
           location: currentAnalysis.location || '',
           salary: currentAnalysis.salary || ''
         }

@@ -1121,9 +1121,12 @@ function buildCoverLetterPrompt(resumeData, jobDescription, analysis, jobMeta) {
   const matchingSkills = (analysis?.matchingSkills || []).slice(0, 6).join(', ');
   const meta = jobMeta || {};
   // Filter out location values that got misidentified as company names
-  const company = (meta.company && !meta.company.toLowerCase().includes('multiple locations')
-    && !meta.company.toLowerCase().includes('remote'))
-    ? meta.company : '';
+  const rawCompany = (meta.company || '').trim();
+  const locationPatterns = /multiple locations|remote|hybrid|on-?site|united states|worldwide/i;
+  const looksLikeLocation = locationPatterns.test(rawCompany) ||
+    /^[A-Z][a-z]+,\s*[A-Z]{2}$/.test(rawCompany) ||  // "Austin, TX"
+    /^[A-Z]{2},?\s/.test(rawCompany);                   // "TX, US"
+  const company = (rawCompany && !looksLikeLocation) ? rawCompany : '';
   const location = meta.location || '';
 
   const jobMetaBlock = [
