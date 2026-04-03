@@ -317,7 +317,7 @@
       .jm-header {
         background: var(--jm-primary);
         color: white;
-        padding: 12px 16px;
+        padding: 14px 16px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -327,10 +327,10 @@
       #jm-panel.theme-dark .jm-header { background: #1e3a5f !important; }
       #jm-panel.theme-warm .jm-header { background: #d97706 !important; }
 
-      .jm-header h2 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0; }
-      .jm-header h2 > span { font-size: 22px; line-height: 1; flex-shrink: 0; }
+      .jm-header h2 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 0; min-width: 0; }
+      .jm-header h2 > span { font-size: 24px; line-height: 1; flex-shrink: 0; }
       .jm-header .jm-title-text { display: flex; flex-direction: column; min-width: 0; }
-      .jm-header .jm-title-text .jm-subtitle { font-size: 10px; font-weight: 400; opacity: 0.7; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .jm-header .jm-title-text .jm-subtitle { font-size: 11px; font-weight: 400; opacity: 0.8; margin-top: 2px; }
 
       /* Theme toggle button */
       .jm-theme-btn {
