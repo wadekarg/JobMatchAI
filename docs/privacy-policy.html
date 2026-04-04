@@ -3,195 +3,628 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy – JobMatch AI</title>
+  <title>JobMatch AI – How to Use & Privacy Policy</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --blue:       #3b82f6;
+      --blue-dark:  #1d4ed8;
+      --blue-light: #eff6ff;
+      --green:      #10b981;
+      --amber:      #f59e0b;
+      --dark:       #0f172a;
+      --mid:        #334155;
+      --muted:      #64748b;
+      --border:     #e2e8f0;
+      --bg:         #f8fafc;
+      --white:      #ffffff;
+      --radius:     12px;
+      --shadow:     0 4px 24px rgba(15,23,42,0.08);
+    }
+
+    html { scroll-behavior: smooth; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
-      background: #f8fafc;
-      color: #1e293b;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--mid);
       line-height: 1.7;
+      font-size: 15px;
     }
 
-    header {
-      background: #3b82f6;
+    /* ── Hero ──────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 60%, #06b6d4 100%);
       color: #fff;
-      padding: 48px 24px 40px;
+      padding: 64px 24px 56px;
       text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .hero-inner { position: relative; z-index: 1; max-width: 640px; margin: 0 auto; }
+    .hero-logo { font-size: 48px; margin-bottom: 12px; }
+    .hero h1 { font-size: clamp(24px, 5vw, 36px); font-weight: 800; letter-spacing: -0.5px; margin-bottom: 10px; }
+    .hero p { font-size: 16px; opacity: 0.88; max-width: 480px; margin: 0 auto 24px; }
+    .hero-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .hero-badge {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 13px;
+      backdrop-filter: blur(4px);
     }
 
-    header .logo {
-      font-size: 28px;
+    /* ── Tab bar ───────────────────────────── */
+    .tab-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .tab-bar-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      padding: 0 16px;
+    }
+    .tab-btn {
+      padding: 16px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--blue); }
+    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+    /* ── Tab content ───────────────────────── */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Page wrapper ──────────────────────── */
+    .page { max-width: 900px; margin: 0 auto; padding: 48px 24px 80px; }
+
+    /* ── Section heading ───────────────────── */
+    .section-heading {
+      font-size: 22px;
       font-weight: 700;
-      letter-spacing: -0.5px;
+      color: var(--dark);
       margin-bottom: 6px;
     }
-
-    header .tagline {
-      font-size: 15px;
-      opacity: 0.85;
+    .section-sub {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
     }
 
-    .container {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 48px 24px 80px;
+    /* ── Steps ─────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 0; }
+    .step {
+      display: flex;
+      gap: 20px;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 19px;
+      top: 48px;
+      bottom: -8px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--blue), transparent);
+      opacity: 0.2;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 4px var(--blue-light);
+    }
+    .step-body {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      flex: 1;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .step-body h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-body h3 .step-icon { font-size: 20px; }
+    .step-body p { font-size: 14px; color: var(--mid); margin-bottom: 10px; }
+    .step-body p:last-child { margin-bottom: 0; }
+    .step-tip {
+      background: #f0fdf4;
+      border-left: 3px solid var(--green);
+      border-radius: 0 6px 6px 0;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #065f46;
+      margin-top: 10px;
+    }
+    .step-warn {
+      background: #fffbeb;
+      border-left: 3px solid var(--amber);
+      border-radius: 0 6px 6px 0;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #92400e;
+      margin-top: 10px;
     }
 
+    /* ── Feature grid ──────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+    }
+    .feature-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .feature-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(15,23,42,0.12); }
+    .feature-icon { font-size: 28px; margin-bottom: 10px; }
+    .feature-card h3 { font-size: 15px; font-weight: 700; color: var(--dark); margin-bottom: 6px; }
+    .feature-card p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* ── Flow diagram ──────────────────────── */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 32px 0;
+      box-shadow: var(--shadow);
+    }
+    .flow-step {
+      background: var(--blue-light);
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--blue-dark);
+      text-align: center;
+      min-width: 100px;
+    }
+    .flow-arrow { color: var(--muted); font-size: 18px; flex-shrink: 0; }
+
+    /* ── Tips grid ─────────────────────────── */
+    .tips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .tip-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .tip-emoji { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+    .tip-card p { font-size: 13px; color: var(--mid); line-height: 1.5; }
+    .tip-card strong { color: var(--dark); }
+
+    /* ── Divider ───────────────────────────── */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ── Privacy policy styles ─────────────── */
     .meta {
       font-size: 13px;
-      color: #64748b;
-      margin-bottom: 36px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #e2e8f0;
+      color: var(--muted);
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
     }
-
-    h2 {
-      font-size: 19px;
-      font-weight: 600;
-      color: #0f172a;
-      margin: 36px 0 10px;
-    }
-
-    h2:first-of-type { margin-top: 0; }
-
-    p { margin-bottom: 14px; color: #334155; }
-
-    ul {
-      margin: 8px 0 14px 20px;
-      color: #334155;
-    }
-
-    ul li { margin-bottom: 6px; }
-
     .highlight-box {
       background: #f0fdf4;
-      border-left: 4px solid #10b981;
-      border-radius: 0 8px 8px 0;
+      border-left: 4px solid var(--green);
+      border-radius: 0 var(--radius) var(--radius) 0;
       padding: 14px 18px;
-      margin: 20px 0;
+      margin-bottom: 28px;
       font-size: 15px;
       color: #065f46;
       font-weight: 500;
     }
-
-    .section {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
+    .policy-section {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 24px 28px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+    .policy-section h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .policy-section h2 .ph { font-size: 20px; }
+    .policy-section p { font-size: 14px; color: var(--mid); margin-bottom: 10px; }
+    .policy-section p:last-child { margin-bottom: 0; }
+    .policy-section ul { margin: 6px 0 10px 18px; }
+    .policy-section ul li { font-size: 14px; color: var(--mid); margin-bottom: 6px; }
+    .policy-section ul li:last-child { margin-bottom: 0; }
+    .policy-section a { color: var(--blue); text-decoration: none; }
+    .policy-section a:hover { text-decoration: underline; }
+    code {
+      background: #f1f5f9;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #0f172a;
+      font-family: 'SF Mono', 'Fira Code', monospace;
     }
 
-    .section h2 { margin-top: 0; }
-
-    a { color: #667eea; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
+    /* ── Footer ────────────────────────────── */
     footer {
       text-align: center;
       font-size: 13px;
-      color: #94a3b8;
-      padding: 24px;
-      border-top: 1px solid #e2e8f0;
+      color: var(--muted);
+      padding: 28px 24px;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--blue); text-decoration: none; }
+
+    /* ── Responsive ────────────────────────── */
+    @media (max-width: 600px) {
+      .hero { padding: 48px 16px 40px; }
+      .page { padding: 32px 16px 60px; }
+      .flow { gap: 6px; padding: 16px; }
+      .flow-step { min-width: 80px; font-size: 12px; }
+      .tab-btn { padding: 14px 16px; font-size: 13px; }
     }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">★ JobMatch AI</div>
-  <div class="tagline">Smart Resume &amp; Job Analyzer – Chrome Extension</div>
-</header>
+<!-- ── Hero ──────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-logo">★</div>
+    <h1>JobMatch AI</h1>
+    <p>Smart Resume &amp; Job Analyzer for Chrome — analyze, autofill, and track every application.</p>
+    <div class="hero-badges">
+      <span class="hero-badge">🆓 Free Extension</span>
+      <span class="hero-badge">🔒 Privacy First</span>
+      <span class="hero-badge">🤖 Bring Your Own AI Key</span>
+      <span class="hero-badge">🌐 Works on Any Job Site</span>
+    </div>
+  </div>
+</div>
 
-<div class="container">
+<!-- ── Tab bar ────────────────────────────────── -->
+<div class="tab-bar">
+  <div class="tab-bar-inner">
+    <button class="tab-btn active" onclick="switchTab('how-to-use', this)">📖 How to Use</button>
+    <button class="tab-btn" onclick="switchTab('privacy', this)">🔒 Privacy Policy</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- HOW TO USE TAB                              -->
+<!-- ════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-how-to-use">
+<div class="page">
+
+  <!-- Features overview -->
+  <div class="section-heading">Everything in one side panel</div>
+  <div class="section-sub">JobMatch AI lives as a floating ★ button on every page. Click it to open the panel.</div>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🎯</div>
+      <h3>Match Score</h3>
+      <p>Instantly see how well your resume fits a job — with matching skills, gaps, and keyword analysis.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <h3>AutoFill Applications</h3>
+      <p>Fill entire job application forms in one click using your resume and pre-saved Q&amp;A answers.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✍️</div>
+      <h3>Resume Bullet Improver</h3>
+      <p>Rewrite your resume bullets to match each specific job. Control exactly which skills to include.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📄</div>
+      <h3>Tailored Resume</h3>
+      <p>Download a customized DOCX resume for each application with your improved bullets already inserted.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✉️</div>
+      <h3>Cover Letter Generator</h3>
+      <p>Generate a tailored cover letter based on the actual job posting, not a generic template.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📌</div>
+      <h3>Job Tracker</h3>
+      <p>Save jobs, mark as applied, add notes — all tracked without leaving your browser.</p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Autofill flow diagram -->
+  <div class="section-heading">How AutoFill works</div>
+  <div class="section-sub">A two-pass system that fills forms accurately without wasting API calls.</div>
+  <div class="flow">
+    <div class="flow-step">🖱 Click<br>AutoFill</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">🔍 Scan<br>all fields</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">⚡ Direct fill<br>from Q&amp;A</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">🤖 AI fills<br>remainder</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">✅ Review<br>&amp; submit</div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Step by step setup -->
+  <div class="section-heading">Getting started — step by step</div>
+  <div class="section-sub">Takes about 5 minutes to set up. After that, every application is faster.</div>
+
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3><span class="step-icon">🧩</span> Install the extension</h3>
+        <p>Install JobMatch AI from the Chrome Web Store. Once installed, a small <strong>★ star button</strong> will appear floating on every page you visit.</p>
+        <p>Click it to open the side panel. You can drag it anywhere on the screen.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3><span class="step-icon">👤</span> Upload your resume in Profile</h3>
+        <p>Open the panel and click the <strong>Profile</strong> tab. Upload your resume as a <strong>PDF or DOCX</strong> file.</p>
+        <p>The AI will parse it automatically — filling in your name, contact info, skills, work experience, and education. Review and edit anything that wasn't parsed correctly.</p>
+        <div class="step-tip">💡 Upload a DOCX if you want to use the Tailored Resume download feature — it edits your actual file to insert improved bullets.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3><span class="step-icon">🔑</span> Add your AI API key in Settings</h3>
+        <p>Click <strong>Settings</strong> in the panel. Choose an AI provider and paste your API key.</p>
+        <p>Several providers offer generous free tiers — enough for dozens of job analyses and cover letters with no cost. Links to get a free key are shown next to each provider in the Settings page.</p>
+        <div class="step-tip">💡 Your API key is stored only on your device. It is never sent to any server we operate — only directly to the provider's API when you trigger an action.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3><span class="step-icon">💬</span> Pre-save Q&amp;A answers</h3>
+        <p>Click the <strong>Q&amp;A</strong> tab and add answers to questions you get asked on every application — work authorization, visa sponsorship, salary expectations, years of experience, demographic questions, and any custom questions.</p>
+        <p>AutoFill will use these answers <strong>directly</strong> (no AI needed) for any matching form fields, making common fields like name, phone, and work authorization instant and 100% accurate.</p>
+        <div class="step-warn">⚠️ The more Q&amp;A answers you save, the less the AI has to guess. For sensitive fields like gender or ethnicity, always save an explicit answer rather than letting the AI infer.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h3><span class="step-icon">🔍</span> Analyze any job posting</h3>
+        <p>Navigate to any job posting on LinkedIn, Indeed, Greenhouse, Lever, Workday, or any other job site. Click the ★ button to open the panel and press <strong>Analyze Job</strong>.</p>
+        <p>Within seconds you'll see your <strong>match score</strong>, matching skills, missing skills, recommendations, insights, and keywords extracted from the posting.</p>
+        <div class="step-tip">💡 Results are cached — revisiting the same job won't use another API call. Click <strong>Re-Analyze</strong> if the job changed or you updated your resume.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h3><span class="step-icon">⚡</span> AutoFill the application form</h3>
+        <p>When you're on the actual application form (sometimes a separate page or an embedded iframe), click <strong>AutoFill Application</strong> in the panel.</p>
+        <p>The extension scans every field — including fields inside iframes — fills what it can directly from your profile and Q&amp;A answers, then uses AI for any remaining fields.</p>
+        <p>Every filled field is marked with a small <strong>★ Autofilled badge</strong> so you can spot them quickly.</p>
+        <div class="step-warn">⚠️ Always review every autofilled field before submitting. A warning reminder appears in the panel after each autofill. AI answers may not always be correct.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <h3><span class="step-icon">✍️</span> Improve your resume bullets (optional)</h3>
+        <p>After analyzing a job, click <strong>Improve Resume Bullets</strong>. The AI rewrites each bullet in your resume to better match the language and priorities of that specific role.</p>
+        <p>You'll see a before/after comparison for each bullet. You can:</p>
+        <ul style="margin: 8px 0 8px 20px; font-size:14px; color: var(--mid);">
+          <li>Edit the rewritten version directly in the panel</li>
+          <li>Click ↻ to regenerate with a different angle</li>
+          <li>Toggle skill chips to include or exclude specific skills from the rewrite</li>
+          <li>Check/uncheck bullets to include them in the tailored resume download</li>
+        </ul>
+        <div class="step-tip">💡 You can also add brand-new bullets from scratch using the custom bullet generator at the bottom — describe what you did in plain language and the AI polishes it.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <h3><span class="step-icon">📄</span> Download a tailored resume (optional)</h3>
+        <p>After improving bullets, click <strong>Generate Tailored Resume</strong>. The extension edits your original DOCX file directly — replacing bullet text and inserting new ones — while preserving all formatting.</p>
+        <p>The downloaded file is automatically named after the company (e.g. <code>resume_Acme_Corp.docx</code>).</p>
+        <div class="step-warn">⚠️ Requires a DOCX resume (not PDF). Review the downloaded file before sending — always double-check that insertions landed in the right place.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <h3><span class="step-icon">📌</span> Track your application</h3>
+        <p>Click <strong>Save Job</strong> to bookmark it. After applying, click <strong>Mark as Applied</strong> — it records the job with a timestamp.</p>
+        <p>Use the <strong>Notes</strong> field to jot down recruiter names, interview dates, or follow-up reminders. All your saved and applied jobs are in the <strong>Saved</strong> tab.</p>
+      </div>
+    </div>
+
+  </div><!-- /steps -->
+
+  <hr class="divider">
+
+  <!-- Tips -->
+  <div class="section-heading">Tips for best results</div>
+  <div class="section-sub">Small habits that make the extension significantly more accurate.</div>
+  <div class="tips-grid">
+    <div class="tip-card">
+      <div class="tip-emoji">📝</div>
+      <p><strong>Fill your Q&amp;A thoroughly.</strong> The more pre-saved answers you have, the less the AI has to guess — and the faster and more accurate autofill becomes.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-emoji">📂</div>
+      <p><strong>Use 3 resume profiles.</strong> Keep separate profiles for different role types (e.g. frontend, backend, management) and switch between them with one click.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-emoji">🎯</div>
+      <p><strong>Analyze before autofilling.</strong> Running Analyze Job first gives the AI context about the specific role, making autofill answers more relevant.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-emoji">🔄</div>
+      <p><strong>Regenerate bullets freely.</strong> Each click of ↻ tries a different angle. Edit the result in the panel before generating the tailored resume.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-emoji">🧩</div>
+      <p><strong>Check iframe forms.</strong> On Greenhouse or Lever pages, the actual form is often below the job description in an embedded frame — scroll down to find it before clicking AutoFill.</p>
+    </div>
+    <div class="tip-card">
+      <div class="tip-emoji">🔍</div>
+      <p><strong>Always review before submitting.</strong> AutoFill is a time-saver, not a replacement for your own review. Check every field — especially dropdowns and EEO questions.</p>
+    </div>
+  </div>
+
+</div><!-- /page -->
+</div><!-- /tab-how-to-use -->
+
+
+<!-- ════════════════════════════════════════════ -->
+<!-- PRIVACY POLICY TAB                          -->
+<!-- ════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-privacy">
+<div class="page">
 
   <div class="meta">
-    <strong>Privacy Policy</strong> &nbsp;·&nbsp; Last updated: March 15, 2026 &nbsp;·&nbsp;
-    Extension version 1.0.0
+    <strong>Privacy Policy</strong> &nbsp;·&nbsp; Last updated: April 3, 2026 &nbsp;·&nbsp; Extension version 1.0.5
   </div>
 
   <div class="highlight-box">
-    Short version: Your resume and personal data stay on your device. Nothing is sent to us or any third party — only to the AI provider you choose and configure yourself.
+    🔒 Short version: Your resume and personal data stay on your device. Nothing is sent to us or any third party — only to the AI provider you choose and configure yourself.
   </div>
 
-  <div class="section">
-    <h2>1. What This Extension Does</h2>
-    <p>
-      JobMatch AI is a Chrome browser extension that helps job seekers analyze job postings against their resume,
-      auto-fill job applications, generate cover letters, and track applied jobs. All processing happens locally
-      in your browser or through the AI API provider you select.
-    </p>
+  <div class="policy-section">
+    <h2><span class="ph">📋</span> 1. What This Extension Does</h2>
+    <p>JobMatch AI is a Chrome browser extension that helps job seekers analyze job postings against their resume, auto-fill job applications, generate cover letters, improve and tailor resume bullets, create tailored resume downloads, and track applied jobs. All processing happens locally in your browser or through the AI API provider you select and configure.</p>
   </div>
 
-  <div class="section">
-    <h2>2. Data We Collect and Store</h2>
-    <p>JobMatch AI stores the following data <strong>locally on your device</strong> using Chrome's built-in
-    <code>chrome.storage.local</code> API. This data never leaves your device except as described in Section 3.</p>
+  <div class="policy-section">
+    <h2><span class="ph">💾</span> 2. Data We Collect and Store</h2>
+    <p>JobMatch AI stores the following data <strong>locally on your device</strong> using Chrome's built-in <code>chrome.storage.local</code> API. This data never leaves your device except as described in Section 3.</p>
     <ul>
-      <li><strong>Resume data</strong> — your name, contact info, skills, work experience, education, and any other content from your uploaded resume (PDF or DOCX).</li>
+      <li><strong>Resume data</strong> — your name, contact info, skills, work experience, education, and any other content from your uploaded resume (PDF or DOCX). If you upload a DOCX file, the raw file bytes are also stored locally to enable tailored resume generation.</li>
       <li><strong>Q&amp;A answers</strong> — pre-configured answers to common job application questions (work authorization, demographics, salary expectations, etc.).</li>
       <li><strong>AI provider settings</strong> — the provider you selected, your API key, and chosen model. Your API key is stored locally and only transmitted to the AI provider's own servers.</li>
       <li><strong>Job analysis cache</strong> — analysis results for recently viewed job postings, stored to avoid redundant API calls (up to 50 entries, automatically trimmed).</li>
       <li><strong>Applied jobs &amp; saved jobs</strong> — a list of jobs you've marked as applied or saved, including job title, company, location, salary, match score, and the job URL.</li>
       <li><strong>Job notes</strong> — any free-text notes you type into the extension for individual job postings.</li>
+      <li><strong>Resume bullet preferences</strong> — your per-bullet skill inclusion and exclusion choices when using the Resume Bullet Improver. These are used only to guide AI generation and are not stored persistently between sessions.</li>
+      <li><strong>Tailored resume counter</strong> — a simple integer used to generate unique filenames for downloaded resumes. No resume content is stored in this counter.</li>
     </ul>
   </div>
 
-  <div class="section">
-    <h2>3. Data Sent Externally</h2>
-    <p>
-      The only data transmitted outside your device is sent to the <strong>AI provider you configure</strong>
-      (e.g., Cerebras, Groq, Google Gemini, OpenAI, Anthropic, etc.) when you trigger an AI action such as
-      Analyze Job, AutoFill, Generate Cover Letter, or Improve Resume Bullets.
-    </p>
-    <p>In those cases, the following is sent to your chosen AI provider's API:</p>
+  <div class="policy-section">
+    <h2><span class="ph">🌐</span> 3. Data Sent Externally</h2>
+    <p>The only data transmitted outside your device is sent to the <strong>AI provider you configure</strong> when you trigger an AI action. The following actions send data to your chosen AI provider's API:</p>
     <ul>
-      <li>The job description text scraped from the current page</li>
-      <li>Relevant portions of your resume profile (skills, experience, education)</li>
-      <li>Detected form field labels (for autofill)</li>
+      <li><strong>Analyze Job</strong> — sends the job description and relevant resume sections to score the match and identify skill gaps.</li>
+      <li><strong>AutoFill Application</strong> — sends detected form field labels and your resume/Q&amp;A profile to generate answers.</li>
+      <li><strong>Generate Cover Letter</strong> — sends the job description and your resume profile to generate a tailored cover letter.</li>
+      <li><strong>Improve Resume Bullets</strong> — sends individual resume bullet points, the job description, and your skill inclusion/exclusion preferences so the AI respects which skills to reference or avoid.</li>
+      <li><strong>Generate Tailored Resume</strong> — uses locally stored bullet improvements to edit your DOCX file. No additional AI call is made at download time.</li>
+      <li><strong>Add Custom Bullet</strong> — sends your rough description, target role, job description, and skill preferences to generate a polished bullet point.</li>
     </ul>
-    <p>
-      This data is sent directly from your browser to the AI provider — <strong>it does not pass through
-      any server operated by JobMatch AI</strong>. The AI provider's own privacy policy governs how they
-      handle this data. We recommend reviewing the privacy policy of whichever provider you choose.
-    </p>
-    <p>
-      <strong>We do not operate any backend server.</strong> There is no JobMatch AI server that receives,
-      stores, or processes your data.
-    </p>
+    <p>This data is sent directly from your browser to the AI provider — <strong>it does not pass through any server operated by JobMatch AI</strong>. The AI provider's own privacy policy governs how they handle this data.</p>
+    <p><strong>We do not operate any backend server.</strong> There is no JobMatch AI server that receives, stores, or processes your data.</p>
   </div>
 
-  <div class="section">
-    <h2>4. Data We Do NOT Collect</h2>
+  <div class="policy-section">
+    <h2><span class="ph">🚫</span> 4. Data We Do NOT Collect</h2>
     <ul>
       <li>We do <strong>not</strong> collect analytics, usage statistics, or telemetry of any kind.</li>
       <li>We do <strong>not</strong> track which job sites you visit.</li>
       <li>We do <strong>not</strong> share any data with advertisers or data brokers.</li>
       <li>We do <strong>not</strong> have access to your Chrome browsing history.</li>
       <li>We do <strong>not</strong> transmit your resume or personal information to any server we operate.</li>
+      <li>We do <strong>not</strong> store or log data from AI provider responses beyond what is shown in the extension UI and cached locally.</li>
     </ul>
   </div>
 
-  <div class="section">
-    <h2>5. Permissions Used and Why</h2>
+  <div class="policy-section">
+    <h2><span class="ph">🔐</span> 5. Permissions Used and Why</h2>
     <ul>
-      <li><strong>storage</strong> — to save your resume profile, Q&amp;A answers, settings, and job history locally on your device.</li>
+      <li><strong>storage</strong> — to save your resume profile, Q&amp;A answers, settings, job history, and analysis cache locally on your device.</li>
       <li><strong>activeTab</strong> — to read the job description and detect form fields on the current tab when you click Analyze Job or AutoFill.</li>
-      <li><strong>scripting</strong> — to inject the side panel UI into supported job sites when you activate the extension.</li>
-      <li><strong>tabs</strong> — to open the Profile/Settings page and to forward messages between the popup and the content script.</li>
+      <li><strong>webNavigation</strong> — to detect all frames (including iframes) within a tab, required to autofill job application forms embedded in third-party iframes (e.g. Greenhouse, Lever).</li>
       <li><strong>Host permissions</strong> (specific AI provider domains) — to make direct API calls from your browser to the AI provider you configure. Only the provider you select is ever contacted.</li>
     </ul>
   </div>
 
-  <div class="section">
-    <h2>6. Your API Key</h2>
-    <p>
-      Your AI provider API key is stored locally in <code>chrome.storage.local</code> on your device.
-      It is only ever sent to the API endpoint of the provider you selected — never to any other server.
-      We recommend:
-    </p>
+  <div class="policy-section">
+    <h2><span class="ph">🗝️</span> 6. Your API Key</h2>
+    <p>Your AI provider API key is stored locally in <code>chrome.storage.local</code> on your device. It is only ever sent to the API endpoint of the provider you selected — never to any other server. We recommend:</p>
     <ul>
       <li>Using an API key with only the minimum permissions required by your provider.</li>
       <li>Rotating your API key periodically, especially if you suspect it may have been exposed.</li>
@@ -199,8 +632,14 @@
     </ul>
   </div>
 
-  <div class="section">
-    <h2>7. How to Delete Your Data</h2>
+  <div class="policy-section">
+    <h2><span class="ph">📁</span> 7. Resume File Storage</h2>
+    <p>If you upload a DOCX resume, the raw file bytes are stored locally in <code>chrome.storage.local</code> to enable the Tailored Resume feature, which edits your DOCX file directly in the browser without sending the raw file to any server. PDF resumes are parsed for text only; the raw PDF bytes are not stored.</p>
+    <p>You can remove your stored resume at any time from the Profile page within the extension, or by removing the extension entirely.</p>
+  </div>
+
+  <div class="policy-section">
+    <h2><span class="ph">🗑️</span> 8. How to Delete Your Data</h2>
     <p>All data stored by JobMatch AI can be deleted at any time:</p>
     <ul>
       <li><strong>Individual data</strong> — clear your resume, Q&amp;A answers, or settings from within the extension's Profile &amp; Settings page.</li>
@@ -209,43 +648,49 @@
     </ul>
   </div>
 
-  <div class="section">
-    <h2>8. Children's Privacy</h2>
-    <p>
-      JobMatch AI is intended for use by adults seeking employment. We do not knowingly collect
-      any information from children under the age of 13.
-    </p>
+  <div class="policy-section">
+    <h2><span class="ph">👶</span> 9. Children's Privacy</h2>
+    <p>JobMatch AI is intended for use by adults seeking employment. We do not knowingly collect any information from children under the age of 13.</p>
   </div>
 
-  <div class="section">
-    <h2>9. Changes to This Policy</h2>
-    <p>
-      If we make material changes to this privacy policy, we will update the "Last updated" date at the top
-      of this page and may post a notice in the extension. Continued use of the extension after any changes
-      constitutes acceptance of the updated policy.
-    </p>
+  <div class="policy-section">
+    <h2><span class="ph">📝</span> 10. Changes to This Policy</h2>
+    <p>If we make material changes to this privacy policy, we will update the "Last updated" date at the top of this page. Continued use of the extension after any changes constitutes acceptance of the updated policy.</p>
   </div>
 
-  <div class="section">
-    <h2>10. Contact</h2>
-    <p>
-      If you have questions about this privacy policy or how JobMatch AI handles your data, please open
-      an issue on the project's GitHub repository:
-    </p>
-    <p>
-      <a href="https://github.com/wadekarg/JobMatchAI/issues" target="_blank" rel="noopener">
-        github.com/wadekarg/JobMatchAI/issues
-      </a>
-    </p>
+  <div class="policy-section">
+    <h2><span class="ph">✉️</span> 11. Contact</h2>
+    <p>If you have questions about this privacy policy or how JobMatch AI handles your data, please open an issue on the project's GitHub repository:</p>
+    <p><a href="https://github.com/wadekarg/JobMatchAI/issues" target="_blank" rel="noopener">github.com/wadekarg/JobMatchAI/issues</a></p>
   </div>
 
-</div>
+</div><!-- /page -->
+</div><!-- /tab-privacy -->
 
+
+<!-- ── Footer ─────────────────────────────────── -->
 <footer>
   © 2026 JobMatch AI &nbsp;·&nbsp;
-  <a href="https://github.com/wadekarg/JobMatchAI">GitHub</a> &nbsp;·&nbsp;
-  Open Source – MIT License
+  <a href="https://github.com/wadekarg/JobMatchAI" target="_blank" rel="noopener">GitHub</a> &nbsp;·&nbsp;
+  Open Source – MIT License &nbsp;·&nbsp;
+  <a href="#" onclick="switchTab('privacy', document.querySelectorAll('.tab-btn')[1]); return false;">Privacy Policy</a>
 </footer>
+
+<script>
+  function switchTab(id, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Support ?tab=privacy in URL
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('tab') === 'privacy') {
+    switchTab('privacy', document.querySelectorAll('.tab-btn')[1]);
+  }
+</script>
 
 </body>
 </html>

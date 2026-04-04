@@ -363,8 +363,8 @@ async function callAI(provider, apiKey, messages, options = {}) {
         return await dispatchCall(config, apiKey, messages, params);
       } catch (e) {
         lastError = e;
-        // Only retry on rate-limit errors (429); surface all other errors immediately.
-        if (e.status === 429) continue; // retry rate limits
+        // Retry on rate-limit (429) and transient server errors (5xx)
+        if (e.status === 429 || e.status === 500 || e.status === 502 || e.status === 503) continue;
         throw wrapAIError(e);
       }
     }
@@ -1243,17 +1243,21 @@ Return ONLY the complete HTML document. No commentary, no markdown.`
  * @param {string}   [currentEdit]   - The user's edited version (if any) to use as context.
  * @returns {Array<{role: string, content: string}>} A single-message messages array.
  */
-function buildSingleBulletRewritePrompt(originalBullet, jobDescription, missingSkills, currentEdit) {
+function buildSingleBulletRewritePrompt(originalBullet, jobDescription, missingSkills, currentEdit, excludedSkills) {
   const missing = (missingSkills || []).filter(Boolean);
+  const excluded = (excludedSkills || []).filter(Boolean);
   const editContext = currentEdit
     ? `\nUSER'S EDITED VERSION (use as guidance for tone, focus, and direction):\n<user_edit>\n${currentEdit}\n</user_edit>\n\nImprove upon the user's edit — keep their intent and direction but make it more polished and impactful.`
     : '\nGive a DIFFERENT version than what you might have generated before — try a fresh angle.';
 
-  const skillsGuidance = missing.length > 0
-    ? `- OPTIONAL: If any of these skills naturally relate to this bullet, you MAY subtly reference them: ${missing.join(', ')}
-- Do NOT force any of these skills in — it is perfectly fine to include NONE of them
-- Only mention a skill if it genuinely fits the context of the original experience`
-    : '- No specific skills to target — just improve the bullet naturally';
+  const skillsGuidance = [
+    missing.length > 0
+      ? `- OPTIONAL: You MAY subtly reference these skills ONLY if they naturally fit the experience: ${missing.join(', ')}\n- Do NOT force them in — it is fine to include NONE of them`
+      : '- No specific skills to target — just improve the bullet naturally',
+    excluded.length > 0
+      ? `- STRICT: Do NOT mention or reference any of these skills under any circumstances: ${excluded.join(', ')}`
+      : ''
+  ].filter(Boolean).join('\n');
 
   return [
     {
@@ -1296,11 +1300,17 @@ Return ONLY the rewritten bullet text.`
  * @param {string[]} missingSkills  - Skills identified as gaps (optional hints).
  * @returns {Array<{role: string, content: string}>} A single-message messages array.
  */
-function buildCustomBulletPrompt(description, targetRole, jobDescription, missingSkills) {
+function buildCustomBulletPrompt(description, targetRole, jobDescription, missingSkills, excludedSkills) {
   const missing = (missingSkills || []).filter(Boolean);
-  const skillsGuidance = missing.length > 0
-    ? `- OPTIONAL: If any of these skills naturally fit, you MAY reference them (but do NOT force): ${missing.join(', ')}`
-    : '';
+  const excluded = (excludedSkills || []).filter(Boolean);
+  const skillsGuidance = [
+    missing.length > 0
+      ? `- OPTIONAL: If any of these skills naturally fit, you MAY reference them (but do NOT force): ${missing.join(', ')}`
+      : '',
+    excluded.length > 0
+      ? `- STRICT: Do NOT mention or reference any of these skills under any circumstances: ${excluded.join(', ')}`
+      : ''
+  ].filter(Boolean).join('\n');
 
   return [
     {

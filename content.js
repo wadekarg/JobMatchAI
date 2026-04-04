@@ -50,9 +50,8 @@
   let toggleBtnRef = null;      // Reference to the floating toggle button (inside closed Shadow DOM)
 
   // AutoFill state
-  let _pendingAnswers   = null; // kept for legacy compatibility
-  let _pendingQuestions = null;
-  let _fieldMap         = {};   // Map of question_id → { el, type, ... } built during field detection
+  let _pendingAnswers = null;
+  let _fieldMap       = {};   // Map of question_id → { el, type, ... } built during field detection
 
   // Inline chip state — chips live in document.body (outside Shadow DOM)
   let _chips             = new Map(); // questionId → { chipEl, fieldEl, ans }
@@ -327,10 +326,11 @@
       #jm-panel.theme-dark .jm-header { background: #1e3a5f !important; }
       #jm-panel.theme-warm .jm-header { background: #d97706 !important; }
 
-      .jm-header h2 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
-      .jm-header h2 > span { font-size: 20px; line-height: 1; flex-shrink: 0; }
-      .jm-header .jm-title-text { display: flex; flex-direction: column; }
-      .jm-header .jm-title-text .jm-subtitle { font-size: 10px; font-weight: 400; opacity: 0.75; margin-top: 1px; }
+      .jm-header h2 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 0; }
+      .jm-header h2 > .jm-icon { font-size: 30px; line-height: 1; flex-shrink: 0; }
+      .jm-header .jm-title-text { display: flex; flex-direction: column; min-width: 0; }
+      .jm-header .jm-title-text .jm-main-title { font-size: 16px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+      .jm-header .jm-title-text .jm-subtitle { font-size: 10px; font-weight: 400; opacity: 0.75; line-height: 1.2; white-space: nowrap; }
 
       /* Theme toggle button */
       .jm-theme-btn {
@@ -465,6 +465,57 @@
         cursor: not-allowed;
       }
 
+      /* Autofill review warning */
+      .jm-autofill-warning {
+        position: relative;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        border-left: 4px solid #f59e0b;
+        border-radius: 10px;
+        padding: 12px 36px 12px 14px;
+        margin-top: 10px;
+        animation: jm-fade-in 0.2s ease;
+      }
+      #jm-panel.theme-dark .jm-autofill-warning {
+        background: #2d2006;
+        border-color: #92400e;
+        border-left-color: #f59e0b;
+      }
+      .jm-autofill-warning-icon {
+        font-size: 18px;
+        line-height: 1;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .jm-autofill-warning-text {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 12px;
+        color: #78350f;
+        line-height: 1.5;
+      }
+      #jm-panel.theme-dark .jm-autofill-warning-text { color: #fcd34d; }
+      .jm-autofill-warning-text strong { font-size: 13px; }
+      .jm-autofill-warning-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 12px;
+        color: #92400e;
+        padding: 2px 4px;
+        border-radius: 4px;
+        line-height: 1;
+        opacity: 0.7;
+      }
+      .jm-autofill-warning-close:hover { opacity: 1; background: rgba(0,0,0,0.08); }
+
       /* Status bar */
       .jm-status {
         padding: 10px 14px;
@@ -530,11 +581,47 @@
         border: 1px solid var(--jm-border);
       }
       /* Sections that contain card children (bullets, cover letter) — no card bg */
-      #jmBulletSection, #jmCoverLetterSection, #jmTailoredResumeSection, #jmAutofillPreview {
+      #jmBulletSection, #jmCoverLetterSection, #jmAutofillPreview {
         background: none;
         border: none;
         padding: 0;
         overflow: visible;
+      }
+
+      /* Tailored Resume Section */
+      #jmTailoredResumeSection {
+        background: none;
+        border: none;
+        padding: 0;
+        overflow: visible;
+      }
+      .jm-resume-status-card {
+        background: var(--jm-card-bg);
+        border: 1px solid var(--jm-border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--jm-text);
+      }
+      .jm-resume-status-card.success { border-left: 3px solid var(--jm-success, #16a34a); }
+      .jm-resume-status-card.error { border-left: 3px solid #dc2626; }
+      .jm-resume-status-card .jm-resume-stat-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 13px;
+      }
+      .jm-resume-status-card .jm-resume-stat-row:last-child { margin-bottom: 0; }
+      .jm-resume-status-card .jm-resume-warn {
+        font-size: 11px;
+        color: #b45309;
+        background: #fef3c7;
+        border-radius: 6px;
+        padding: 6px 10px;
+        margin-top: 8px;
+        line-height: 1.5;
       }
 
       .jm-section h3 {
@@ -1183,10 +1270,10 @@
     return `
       <div class="jm-header">
         <h2>
-          <span>&#9733;</span>
+          <span class="jm-icon">&#9733;</span>
           <div class="jm-title-text">
-            JobMatch AI
-            <span class="jm-subtitle">Resume & Job Analyzer</span>
+            <span class="jm-main-title">JobMatch AI</span>
+            <span class="jm-subtitle">Resume &amp; Job Analyzer</span>
           </div>
         </h2>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -1235,6 +1322,15 @@
           <button class="jm-btn jm-btn-outline" id="jmCoverLetterBtn" style="display:none">&#9993; Cover Letter</button>
           <button class="jm-btn jm-btn-outline" id="jmRewriteBulletsBtn" style="display:none">&#9997; Improve Resume Bullets</button>
           <button class="jm-btn jm-btn-outline" id="jmTailoredResumeBtn" style="display:none">&#128196; Generate Tailored Resume</button>
+        </div>
+
+        <div class="jm-autofill-warning" id="jmAutofillWarning" style="display:none">
+          <button class="jm-autofill-warning-close" id="jmAutofillWarningClose" title="Dismiss">&#10005;</button>
+          <div class="jm-autofill-warning-icon">&#9888;</div>
+          <div class="jm-autofill-warning-text">
+            <strong>Review before submitting</strong>
+            <span>AI can make mistakes. Please check every autofilled answer on the form before hitting Submit.</span>
+          </div>
         </div>
 
         <div class="jm-score-section" id="jmScoreSection">
@@ -1317,7 +1413,7 @@
         <!-- Tailored resume output -->
         <div class="jm-section" id="jmTailoredResumeSection" style="display:none">
           <h3>Tailored Resume</h3>
-          <p id="jmTailoredResumeStatus" style="font-size:12px;color:var(--jm-text-secondary);"></p>
+          <div id="jmTailoredResumeStatus" class="jm-resume-status-card"></div>
         </div>
 
         <!-- Job notes (always visible) -->
@@ -1343,6 +1439,9 @@
       analyzeJob(forceRefresh);
     });
     panel.querySelector('#jmAutofill').addEventListener('click', autofillForm);
+    panel.querySelector('#jmAutofillWarningClose').addEventListener('click', () => {
+      shadowRoot.getElementById('jmAutofillWarning').style.display = 'none';
+    });
     panel.querySelector('#jmSaveJob').addEventListener('click', saveJob);
 
     panel.querySelector('#jmMarkApplied').addEventListener('click', markApplied);
@@ -2204,6 +2303,8 @@
       showJobMeta(cached.title, cached.company, cached.location, cached.salary, cached.jobId);
       renderAnalysis(cached.response);
       shadowRoot.getElementById('jmSaveJob').style.display = 'flex';
+      const cachedAppliedBtn = shadowRoot.getElementById('jmMarkApplied');
+      if (cachedAppliedBtn.textContent !== 'Applied') cachedAppliedBtn.style.display = 'flex';
       shadowRoot.getElementById('jmCoverLetterBtn').style.display = 'flex';
       shadowRoot.getElementById('jmRewriteBulletsBtn').style.display = 'flex';
       shadowRoot.getElementById('jmTailoredResumeBtn').style.display = 'flex';
@@ -2489,6 +2590,9 @@
     if (!btn) { console.error('[JobMatch AI] AutoFill button not found'); return; }
     btn.disabled = true;
     btn.innerHTML = '<span class="jm-spinner"></span> Scanning form...';
+    // Hide previous run's warning
+    const _autofillWarning = shadowRoot.getElementById('jmAutofillWarning');
+    if (_autofillWarning) _autofillWarning.style.display = 'none';
 
     try {
       // Step 1: detect fields and store DOM references
@@ -2557,6 +2661,9 @@
         (skipped.length ? ` (${skipped.length} need your input)` : '');
       setStatus(msg, 'success');
       setTimeout(clearStatus, 3000);
+      // Show review warning
+      const warning = shadowRoot && shadowRoot.getElementById('jmAutofillWarning');
+      if (warning) warning.style.display = 'flex';
     } catch (err) {
       console.error('[JobMatch AI] AutoFill error:', err);
       setStatus('Error: ' + err.message, 'error');
@@ -2649,12 +2756,13 @@
       if (skipped.length > 0) {
         msg += ` ${skipped.length} could not be filled — check manually.`;
       }
-      msg += ' Review before submitting!';
       setStatus(msg, 'success');
+      // Show review warning
+      const warningEl = shadowRoot && shadowRoot.getElementById('jmAutofillWarning');
+      if (warningEl) warningEl.style.display = 'flex';
 
       shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
       _pendingAnswers = null;
-      _pendingQuestions = [];
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     } finally {
@@ -2667,7 +2775,6 @@
   function cancelAutofill() {
     shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
     _pendingAnswers = null;
-    _pendingQuestions = [];
     clearStatus();
   }
 
@@ -3030,6 +3137,7 @@
     window.addEventListener('scroll', _chipScrollHandler, { passive: true });
 
     // Reposition chips if the page layout changes (e.g. accordions opening)
+    if (_chipResizeObs) { _chipResizeObs.disconnect(); _chipResizeObs = null; }
     _chipResizeObs = new ResizeObserver(repositionAllChips);
     _chipResizeObs.observe(document.documentElement);
   }
@@ -3143,8 +3251,14 @@
       const label = _chipBar.querySelector('.jmai-bar-text');
       if (label) label.textContent = `✓ ${filled} field${filled === 1 ? '' : 's'} filled!`;
     }
+    // Show review warning in the panel
+    if (shadowRoot) {
+      const warning = shadowRoot.getElementById('jmAutofillWarning');
+      if (warning) warning.style.display = 'flex';
+    }
     setTimeout(() => {
       clearAllChips();
+      _fieldMap = {};
       const btn = shadowRoot && shadowRoot.getElementById('jmAutofill');
       if (btn) { btn.innerHTML = 'AutoFill Application'; btn.onclick = null; }
     }, 700);
@@ -4154,17 +4268,22 @@
               const jd = extractJobDescription();
               const original = item.querySelector('.jm-bullet-before').textContent;
               const currentEdit = item.querySelector('.jm-bullet-after').textContent.trim();
-              // Get only the included (non-excluded) skills for this bullet
               const bulletSkills = [];
-              item.querySelectorAll('.jm-skill-chip:not(.jm-excluded-skill)').forEach(chip => {
-                bulletSkills.push(chip.dataset.skill);
+              const excludedSkills = [];
+              item.querySelectorAll('.jm-skill-chip').forEach(chip => {
+                if (chip.classList.contains('jm-excluded-skill')) {
+                  excludedSkills.push(chip.dataset.skill);
+                } else {
+                  bulletSkills.push(chip.dataset.skill);
+                }
               });
               const newBullet = await sendMessage({
                 type: 'REWRITE_SINGLE_BULLET',
                 originalBullet: original,
                 currentEdit: currentEdit !== original ? currentEdit : '',
                 jobDescription: jd,
-                missingSkills: bulletSkills
+                missingSkills: bulletSkills,
+                excludedSkills
               });
               item.querySelector('.jm-bullet-after').textContent = newBullet;
             } catch (err) {
@@ -4204,7 +4323,8 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="jm-spinner"></span> Generating...';
     section.style.display = 'block';
-    status.textContent = '';
+    status.className = 'jm-resume-status-card';
+    status.innerHTML = '';
 
     try {
       if (!currentAnalysis) throw new Error('Analyze the job first.');
@@ -4241,7 +4361,8 @@
         throw new Error('No bullets selected. Click "Improve Resume Bullets" first and check the ones you want to include.');
       }
 
-      status.textContent = 'Editing your resume...';
+      status.className = 'jm-resume-status-card';
+      status.innerHTML = '<span style="color:var(--jm-text-secondary);font-size:12px;">Editing your resume...</span>';
 
       // Send to background for DOCX editing
       const result = await sendMessage({
@@ -4282,21 +4403,35 @@
 
       const totalSelected = rewrittenBullets.length + customBullets.length;
       const totalAll = shadowRoot.querySelectorAll('.jm-bullet-item').length;
-      const insertedInfo = result.insertedCount > 0 ? `, inserted <strong>${result.insertedCount}</strong> new` : '';
-      const skippedInfo = totalAll > totalSelected ? ` (${totalAll - totalSelected} excluded)` : '';
-      status.innerHTML = `Done! Replaced <strong>${result.replacedCount}</strong> of ${result.totalBullets} selected bullets${insertedInfo}${skippedInfo}. Downloaded as <strong>${escapeHTML(downloadName)}</strong>`;
-      status.style.color = 'var(--jm-success, #16a34a)';
+      const skipped = totalAll > totalSelected ? totalAll - totalSelected : 0;
+
+      status.className = 'jm-resume-status-card success';
+      status.style.color = '';
+
+      let html = `
+        <div class="jm-resume-stat-row">
+          <span style="font-size:16px;">&#10003;</span>
+          <span><strong>Resume downloaded</strong> as <strong>${escapeHTML(downloadName)}</strong></span>
+        </div>
+        <div class="jm-resume-stat-row" style="color:var(--jm-text-secondary);font-size:12px;">
+          <span>Replaced <strong>${result.replacedCount}</strong> of <strong>${result.totalBullets}</strong> bullets</span>
+          ${result.insertedCount > 0 ? `<span>&middot; Inserted <strong>${result.insertedCount}</strong> new</span>` : ''}
+          ${skipped > 0 ? `<span>&middot; <strong>${skipped}</strong> excluded</span>` : ''}
+        </div>`;
+
       if (result.replacedCount < result.totalBullets) {
-        status.innerHTML += `<br><span style="color:var(--jm-text-secondary);font-size:11px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched in the DOCX. The text may have been split differently in the document.</span>`;
+        html += `<div style="font-size:11px;color:var(--jm-text-secondary);margin-top:4px;">${result.totalBullets - result.replacedCount} bullet(s) could not be matched — the text may be split differently in the DOCX.</div>`;
       }
-      status.innerHTML += `<br><span style="margin-top:6px;display:inline-block;font-size:11px;color:#b45309;background:#fef3c7;padding:4px 8px;border-radius:4px;line-height:1.4;">&#9888; Please review the downloaded resume for accuracy and formatting before submitting your application.</span>`;
+
+      html += `<div class="jm-resume-warn">&#9888; Review the downloaded resume for accuracy before submitting.</div>`;
+      status.innerHTML = html;
     } catch (err) {
+      status.className = 'jm-resume-status-card error';
+      status.style.color = '';
       if (err.message === 'DOCX_REQUIRED' || err.message.includes('DOCX_REQUIRED')) {
-        status.innerHTML = 'This feature requires a DOCX resume. Please go to <strong>Profile</strong> and upload your resume as a .docx file (not PDF).';
-        status.style.color = '#dc2626';
+        status.innerHTML = `<div class="jm-resume-stat-row"><span style="font-size:16px;">&#9888;</span><span>DOCX required — please upload your resume as <strong>.docx</strong> in <strong>Profile</strong>.</span></div>`;
       } else {
-        status.textContent = 'Error: ' + err.message;
-        status.style.color = '#dc2626';
+        status.innerHTML = `<div class="jm-resume-stat-row"><span style="font-size:16px;">&#9888;</span><span style="color:#dc2626;">${escapeHTML(err.message)}</span></div>`;
       }
     } finally {
       scrollPanelTo(section);
@@ -4429,15 +4564,21 @@
         refreshBtn.classList.add('jm-spinning');
         try {
           const bulletSkills = [];
-          item.querySelectorAll('.jm-skill-chip:not(.jm-excluded-skill)').forEach(chip => {
-            bulletSkills.push(chip.dataset.skill);
+          const excludedSkills = [];
+          item.querySelectorAll('.jm-skill-chip').forEach(chip => {
+            if (chip.classList.contains('jm-excluded-skill')) {
+              excludedSkills.push(chip.dataset.skill);
+            } else {
+              bulletSkills.push(chip.dataset.skill);
+            }
           });
           const newBullet = await sendMessage({
             type: 'GENERATE_CUSTOM_BULLET',
             description,
             targetRole: targetLabel,
             jobDescription: extractJobDescription(),
-            missingSkills: bulletSkills
+            missingSkills: bulletSkills,
+            excludedSkills
           });
           item.querySelector('.jm-bullet-after').textContent = newBullet;
         } catch (err) {
@@ -4684,35 +4825,43 @@
   // these history.pushState navigations, allowing us to reset the panel state
   // and inform the user that a new job has been detected.
 
-  let _lastUrl = window.location.href; // Track the last seen URL to detect changes
-  new MutationObserver(() => {
-    const currentUrl = window.location.href;
-    if (currentUrl === _lastUrl) return;
-    _lastUrl = currentUrl;
-    currentAnalysis = null;
-    _pendingAnswers = null;
-    clearAllChips();        // Remove any floating chips from the previous job page
-    clearAutofillBadges();  // Remove autofill badges from the previous job page
-    if (shadowRoot && panelOpen) {
-      const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
-      if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
-      const autofillBtn = shadowRoot.getElementById('jmAutofill');
-      if (autofillBtn) { autofillBtn.innerHTML = 'AutoFill Application'; autofillBtn.onclick = null; }
-      [
-        'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
-        'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
-        'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
-        'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
-      ].forEach(id => {
-        const el = shadowRoot.getElementById(id);
-        if (el) el.style.display = 'none';
-      });
-      loadJobNotes();
-      loadSlotState();
-      setStatus('New job detected — click Analyze Job.', 'info');
-      setTimeout(clearStatus, 3000);
-    }
-  }).observe(document.body, { childList: true, subtree: true });
+  let _lastUrl = window.location.href;
+  let _urlCheckTimer = null;
+  const _spaObserver = new MutationObserver(() => {
+    // Debounce: URL check runs at most once per 250ms to avoid firing on every DOM mutation
+    if (_urlCheckTimer) return;
+    _urlCheckTimer = setTimeout(() => {
+      _urlCheckTimer = null;
+      const currentUrl = window.location.href;
+      if (currentUrl === _lastUrl) return;
+      _lastUrl = currentUrl;
+      currentAnalysis = null;
+      _pendingAnswers = null;
+      _fieldMap = {};
+      clearAllChips();
+      clearAutofillBadges();
+      if (shadowRoot && panelOpen) {
+        const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
+        if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
+        const autofillBtn = shadowRoot.getElementById('jmAutofill');
+        if (autofillBtn) { autofillBtn.innerHTML = 'AutoFill Application'; autofillBtn.onclick = null; }
+        [
+          'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
+          'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
+          'jmAutofillPreview', 'jmAutofillWarning', 'jmCoverLetterSection', 'jmBulletSection',
+          'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
+        ].forEach(id => {
+          const el = shadowRoot.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+        loadJobNotes();
+        loadSlotState();
+        setStatus('New job detected — click Analyze Job.', 'info');
+        setTimeout(clearStatus, 3000);
+      }
+    }, 250);
+  });
+  _spaObserver.observe(document.body, { childList: true, subtree: true });
   checkIfApplied();
 
 })();

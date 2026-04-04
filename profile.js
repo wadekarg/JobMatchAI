@@ -265,6 +265,12 @@ async function handleFile(file) {
     return;
   }
 
+  const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+  if (file.size > MAX_FILE_SIZE) {
+    setUploadStatus('File is too large (max 15 MB). Please upload a smaller file.', 'error');
+    return;
+  }
+
   setUploadStatus('Extracting text from ' + file.name + '...', 'loading');
 
   try {
