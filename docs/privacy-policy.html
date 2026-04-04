@@ -37,7 +37,7 @@
     .hero {
       background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 60%, #06b6d4 100%);
       color: #fff;
-      padding: 64px 24px 56px;
+      padding: 28px 24px 24px;
       text-align: center;
       position: relative;
       overflow: hidden;
@@ -49,16 +49,16 @@
       background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
     }
     .hero-inner { position: relative; z-index: 1; max-width: 640px; margin: 0 auto; }
-    .hero-logo { font-size: 48px; margin-bottom: 12px; }
-    .hero h1 { font-size: clamp(24px, 5vw, 36px); font-weight: 800; letter-spacing: -0.5px; margin-bottom: 10px; }
-    .hero p { font-size: 16px; opacity: 0.88; max-width: 480px; margin: 0 auto 24px; }
-    .hero-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .hero-logo { font-size: 28px; margin-bottom: 4px; }
+    .hero h1 { font-size: clamp(18px, 4vw, 24px); font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
+    .hero p { font-size: 13px; opacity: 0.88; max-width: 480px; margin: 0 auto 12px; }
+    .hero-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
     .hero-badge {
       background: rgba(255,255,255,0.15);
       border: 1px solid rgba(255,255,255,0.25);
       border-radius: 20px;
-      padding: 5px 14px;
-      font-size: 13px;
+      padding: 3px 10px;
+      font-size: 12px;
       backdrop-filter: blur(4px);
     }
 
@@ -345,15 +345,15 @@
 <!-- ── Tab bar ────────────────────────────────── -->
 <div class="tab-bar">
   <div class="tab-bar-inner">
-    <button class="tab-btn active" onclick="switchTab('how-to-use', this)">📖 How to Use</button>
-    <button class="tab-btn" onclick="switchTab('privacy', this)">🔒 Privacy Policy</button>
+    <button class="tab-btn" onclick="switchTab('how-to-use', this)">📖 How to Use</button>
+    <button class="tab-btn active" onclick="switchTab('privacy', this)">🔒 Privacy Policy</button>
   </div>
 </div>
 
 <!-- ════════════════════════════════════════════ -->
 <!-- HOW TO USE TAB                              -->
 <!-- ════════════════════════════════════════════ -->
-<div class="tab-content active" id="tab-how-to-use">
+<div class="tab-content" id="tab-how-to-use">
 <div class="page">
 
   <!-- Features overview -->
@@ -554,7 +554,7 @@
 <!-- ════════════════════════════════════════════ -->
 <!-- PRIVACY POLICY TAB                          -->
 <!-- ════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-privacy">
+<div class="tab-content active" id="tab-privacy">
 <div class="page">
 
   <div class="meta">
@@ -685,10 +685,10 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Support ?tab=privacy in URL
+  // Support ?tab=how-to-use in URL
   const params = new URLSearchParams(window.location.search);
-  if (params.get('tab') === 'privacy') {
-    switchTab('privacy', document.querySelectorAll('.tab-btn')[1]);
+  if (params.get('tab') === 'how-to-use') {
+    switchTab('how-to-use', document.querySelectorAll('.tab-btn')[0]);
   }
 </script>
 
