@@ -315,6 +315,37 @@
     }
     footer a { color: var(--blue); text-decoration: none; }
 
+    /* ── Hobby card ────────────────────────── */
+    .hobby-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-top: 40px;
+      box-shadow: var(--shadow);
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .hobby-emoji { font-size: 36px; flex-shrink: 0; }
+    .hobby-body h3 { font-size: 16px; font-weight: 700; color: var(--dark); margin-bottom: 6px; }
+    .hobby-body p { font-size: 14px; color: var(--mid); line-height: 1.6; margin-bottom: 14px; }
+    .hobby-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .hobby-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .hobby-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .hobby-btn-primary { background: var(--dark); color: #fff; }
+    .hobby-btn-secondary { background: var(--blue-light); color: var(--blue-dark); border: 1px solid #bfdbfe; }
+
     /* ── Responsive ────────────────────────── */
     @media (max-width: 600px) {
       .hero { padding: 48px 16px 40px; }
@@ -546,6 +577,19 @@
     </div>
   </div>
 
+  <div class="hobby-card">
+    <div class="hobby-emoji">🛠️</div>
+    <div class="hobby-body">
+      <h3>Built as a hobby project</h3>
+      <p>JobMatch AI is developed and maintained by one person in their spare time. It's completely free and open source. If you run into a bug, have a feature idea, or want to contribute code — GitHub is the place. All feedback is welcome.</p>
+      <div class="hobby-btns">
+        <a class="hobby-btn hobby-btn-primary" href="https://github.com/wadekarg/JobMatchAI/issues/new?template=bug_report.md" target="_blank" rel="noopener">🐛 Report a Bug</a>
+        <a class="hobby-btn hobby-btn-secondary" href="https://github.com/wadekarg/JobMatchAI/issues/new?template=feature_request.md" target="_blank" rel="noopener">💡 Request a Feature</a>
+        <a class="hobby-btn hobby-btn-secondary" href="https://github.com/wadekarg/JobMatchAI" target="_blank" rel="noopener">⭐ View on GitHub</a>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /page -->
 </div><!-- /tab-how-to-use -->
 
@@ -658,9 +702,13 @@
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">✉️</span> 11. Contact</h2>
-    <p>If you have questions about this privacy policy or how JobMatch AI handles your data, please open an issue on the project's GitHub repository:</p>
-    <p><a href="https://github.com/wadekarg/JobMatchAI/issues" target="_blank" rel="noopener">github.com/wadekarg/JobMatchAI/issues</a></p>
+    <h2><span class="ph">✉️</span> 11. Contact & About</h2>
+    <p>JobMatch AI is a <strong>personal hobby project</strong> — built and maintained by one person in their spare time. There is no company, no support team, and no paid tier. It is completely free and open source.</p>
+    <p>If you have questions about this privacy policy, found a bug, or want to request a feature, the best place is GitHub:</p>
+    <div class="hobby-btns" style="margin-top:12px;">
+      <a class="hobby-btn hobby-btn-primary" href="https://github.com/wadekarg/JobMatchAI/issues/new" target="_blank" rel="noopener">🐛 Open an Issue</a>
+      <a class="hobby-btn hobby-btn-secondary" href="https://github.com/wadekarg/JobMatchAI" target="_blank" rel="noopener">⭐ View on GitHub</a>
+    </div>
   </div>
 
 </div><!-- /page -->
