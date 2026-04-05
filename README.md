@@ -60,14 +60,33 @@ After analyzing a job, click **Cover Letter** in the side panel. A tailored cove
 </p>
 <p align="center"><em>Cover letter generated from your resume and the job description — ready to copy.</em></p>
 
-### Resume Bullet Rewriter
+### Resume Bullet Rewriter & Tailored Resume
 
-Click **Improve Resume Bullets** after analyzing a job. The AI rewrites your experience descriptions to match the job's language and close the skill gaps highlighted in the analysis.
+Click **Improve Resume Bullets** after analyzing a job. The AI rewrites every bullet in your experience section to match the job's language and incorporate the missing skills from your analysis.
 
 <p align="center">
-  <img src="screenshots/resume-bullets.png" alt="Resume bullets rewritten to match the job description" width="900">
+  <img src="screenshots/resume-bullets.png" alt="Resume bullet rewriter showing original and improved bullets with skill chips and regenerate buttons" width="900">
 </p>
-<p align="center"><em>Rewritten resume bullets — tailored to the job's language and missing skills, ready to paste back into your resume.</em></p>
+<p align="center"><em>Bullet rewriter — original text above, AI-improved text below (editable). Each bullet has its own Skills panel, regenerate button, and include/exclude toggle.</em></p>
+
+Each bullet card gives you full control:
+
+- **Edit the improved text directly** — the rewritten bullet is a live editable field. Whatever you type is what goes into the tailored resume — no copy-pasting needed.
+- **Skills panel (Skills button)** — expands a row of skill chips showing which missing skills are being targeted for that bullet. Click any chip to exclude a skill you don't want woven in, then regenerate.
+- **Regenerate (↻)** — rewrites just that one bullet, using only the skills currently selected for it. Regenerate as many times as you like until the phrasing is right.
+- **Include / exclude toggle** — uncheck a bullet to exclude it from the tailored resume entirely. Excluded bullets are faded with strikethrough so you can see exactly what's in and out before generating.
+
+**Add a custom bullet** — at the bottom of the bullet list there's an "+ Add a bullet" area. Write a new bullet from scratch, pick which experience section it belongs to, and it will be inserted into the tailored resume alongside the rewritten ones.
+
+**Generate Tailored Resume** — once you're satisfied with the bullets (edited, regenerated, or left as-is), click **Generate Tailored Resume**. The extension:
+
+1. Takes every **checked** bullet — both rewritten ones and any custom ones you added
+2. Replaces the original text in your DOCX file with the improved/edited version
+3. Inserts custom bullets into their target experience sections
+4. Adds the job's **missing skills** to the skills section of your resume
+5. Downloads the result as `{your_resume_name}_{company}.docx` — a ready-to-send file named for the specific job
+
+Your original resume file is never modified. The tailored version is always a new download.
 
 ### Job Notes
 
