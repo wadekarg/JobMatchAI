@@ -54,11 +54,18 @@
     let prev = el.previousElementSibling;
     if (prev && prev.tagName === 'LABEL') return cleanLabel(prev.textContent);
 
-    // 8. Walk up DOM looking for label
+    // 8. Walk up DOM looking for a label, but ONLY accept it if the ancestor
+    //    contains exactly one labelable form element. Otherwise we'd attribute
+    //    the same label to every input inside a shared wrapper — which on
+    //    Workday/Greenhouse forms causes the AI to fill the wrong field
+    //    (e.g. typing the gender answer into the field next to gender).
     let parent = el.parentElement;
     for (let i = 0; i < 5 && parent; i++) {
       const label = parent.querySelector('label');
-      if (label && !label.contains(el)) return cleanLabel(label.textContent);
+      if (label && !label.contains(el)) {
+        const labelables = parent.querySelectorAll('input:not([type=hidden]):not([type=button]):not([type=submit]), textarea, select');
+        if (labelables.length === 1) return cleanLabel(label.textContent);
+      }
       parent = parent.parentElement;
     }
 

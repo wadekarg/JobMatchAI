@@ -54,6 +54,11 @@
   let shadowRoot = null;        // The closed Shadow DOM root — panel elements are queried from here
   let toggleBtnRef = null;      // Reference to the floating toggle button (inside closed Shadow DOM)
 
+  // Generation counter for analyze runs. Bumped when SPA navigation is
+  // detected so an in-flight analysis can detect "the page changed under me"
+  // and bail instead of caching/rendering against the wrong URL (I3).
+  let _analyzeGen = 0;
+
   // AutoFill state
   let _fieldMap       = {};   // Map of question_id → { el, type, ... } built during field detection
 
@@ -1449,7 +1454,10 @@
         } else {
           // Deactivate Saved tab highlight if switching away
           deactivateSavedTab();
-          chrome.runtime.sendMessage({ type: 'OPEN_PROFILE_TAB', hash: tab });
+          // Fire-and-forget: route through sendMessage wrapper so an
+          // invalidated extension context surfaces a clean error instead of
+          // crashing the click handler.
+          sendMessage({ type: 'OPEN_PROFILE_TAB', hash: tab }).catch(() => {});
         }
       });
     });
@@ -2265,9 +2273,16 @@
     // downstream (Save / Mark Applied) and the background dedupe see the
     // same key for the same job, regardless of the source URL.
     const pageUrl = normalizeUrl(window.location.href);
+    // Capture a generation token. If the user SPA-navigates while we're
+    // awaiting the AI response, the SPA observer bumps _analyzeGen and we
+    // detect the mismatch below — preventing a stale analysis from rendering
+    // on the new job's panel.
+    const myGen = ++_analyzeGen;
+    const isStale = () => _analyzeGen !== myGen;
 
     // Check cache first (unless force re-analyze)
     const cached = await getCachedAnalysis(pageUrl);
+    if (isStale()) return; // user navigated while cache lookup was in flight
     if (!forceRefresh && cached) {
       currentAnalysis = cached.analysis;
       showJobMeta(cached.title, cached.company, cached.location, cached.salary, cached.jobId);
@@ -2321,8 +2336,13 @@
         company: company
       });
 
+      // Bail before mutating any UI/storage if the user navigated mid-flight.
+      // Without this, the previous job's analysis renders on the new page.
+      if (isStale()) return;
+
       currentAnalysis = { ...response, title, company, location, salary, jobId, url: pageUrl };
       await setCachedAnalysis(pageUrl, { response, analysis: currentAnalysis, title, company, location, salary, jobId });
+      if (isStale()) return;
       analysisSucceeded = true;
       renderAnalysis(response);
       clearStatus();
@@ -2576,12 +2596,16 @@
         console.log('[JobMatch AI] No fields in top frame, broadcasting to iframes...');
         setStatus('Found embedded form. Filling fields...', 'info');
         try {
-          const iframeResult = await chrome.runtime.sendMessage({ type: 'AUTOFILL_IN_FRAMES' });
-          if (iframeResult?.data?.filled > 0) {
-            setStatus(`Filled ${iframeResult.data.filled} fields in embedded form.`, 'success');
+          // Routes through the sendMessage wrapper so an invalidated extension
+          // context surfaces a clean error instead of an uncaught exception.
+          // The wrapper unwraps the {success, data} envelope, so we read
+          // .filled directly off the resolved value.
+          const iframeData = await sendMessage({ type: 'AUTOFILL_IN_FRAMES' });
+          if (iframeData?.filled > 0) {
+            setStatus(`Filled ${iframeData.filled} fields in embedded form.`, 'success');
             setTimeout(clearStatus, 5000);
             return;
-          } else if (iframeResult?.success && iframeResult?.data?.filled === 0) {
+          } else if (iframeData?.filled === 0) {
             setStatus('Embedded form found but no fields could be filled.', 'error');
             return;
           }
@@ -4151,6 +4175,9 @@
       const currentUrl = normalizeUrl(window.location.href);
       if (currentUrl === _lastUrl) return;
       _lastUrl = currentUrl;
+      // Bump the analyze generation so any in-flight analyzeJob() against
+      // the previous URL becomes stale and bails before touching the UI (I3).
+      _analyzeGen++;
       currentAnalysis = null;
       _fieldMap = {};
       clearAutofillBadges();

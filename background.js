@@ -72,6 +72,14 @@ import { deterministicFieldMatcher } from './deterministicMatcher.js';
 // see tests/unit/urlKey-parity.test.js — change both copies together.
 import { normalizeUrlForCache } from './lib/urlKey.mjs';
 
+// DOCX paragraph helpers extracted to lib/docxBullets.mjs for testability.
+// The duplicate-bullet bug (I7) is fixed inside replaceBulletsInDocXml.
+import {
+  extractParagraphText,
+  normalizeForMatch,
+  replaceBulletsInDocXml,
+} from './lib/docxBullets.mjs';
+
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 //
@@ -567,47 +575,10 @@ async function handleRewriteBullets(jobDescription, missingSkills) {
   }
 }
 
-/**
- * Extracts all text from a DOCX XML paragraph (<w:p>) by concatenating
- * all <w:t> text nodes.
- * @param {string} paragraphXml - Raw XML of a <w:p> element.
- * @returns {string} Concatenated plain text.
- */
-function extractParagraphText(paragraphXml) {
-  const textMatches = paragraphXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
-  return textMatches.map(m => m.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '')).join('');
-}
-
-/**
- * Replaces text in a DOCX XML paragraph preserving formatting runs.
- * Puts all new text into the first <w:t> and clears the rest.
- * @param {string} paragraphXml - Raw XML of a <w:p> element.
- * @param {string} newText - Replacement text.
- * @returns {string} Modified paragraph XML.
- */
-function replaceParagraphText(paragraphXml, newText) {
-  let first = true;
-  const escaped = newText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                         .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-  return paragraphXml.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, (match) => {
-    if (first) {
-      first = false;
-      const tag = match.match(/<w:t[^>]*>/)[0];
-      const openTag = tag.includes('xml:space') ? tag : '<w:t xml:space="preserve">';
-      return openTag + escaped + '</w:t>';
-    }
-    return match.replace(/>[^<]*</, '><');
-  });
-}
-
-/**
- * Normalizes text for fuzzy matching.
- * @param {string} str - Input string.
- * @returns {string} Normalized string.
- */
-function normalizeForMatch(str) {
-  return str.toLowerCase().replace(/\s+/g, ' ').trim();
-}
+// Note: extractParagraphText / replaceParagraphText / normalizeForMatch
+// are now imported from lib/docxBullets.mjs above. The bullet-matching
+// loop also lives there (replaceBulletsInDocXml) so the duplicate-bullet
+// dedup is testable.
 
 /**
  * Generates a tailored DOCX resume by editing the original uploaded DOCX.
@@ -643,28 +614,11 @@ async function handleGenerateTailoredResume(rewrittenBullets, missingSkills, cus
 
   let docXml = await docXmlFile.async('string');
 
-  // Replace bullets
-  let replacedCount = 0;
-  for (const bullet of rewrittenBullets) {
-    const normalizedOriginal = normalizeForMatch(bullet.original);
-    const paragraphRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
-    let match;
-    while ((match = paragraphRegex.exec(docXml)) !== null) {
-      const paraXml = match[0];
-      const paraText = extractParagraphText(paraXml);
-      const normalizedPara = normalizeForMatch(paraText);
-
-      if (normalizedPara && normalizedOriginal &&
-          (normalizedPara.includes(normalizedOriginal) ||
-           normalizedOriginal.includes(normalizedPara)) &&
-          normalizedPara.length > 15) {
-        const newParaXml = replaceParagraphText(paraXml, bullet.improved);
-        docXml = docXml.replace(paraXml, newParaXml);
-        replacedCount++;
-        break;
-      }
-    }
-  }
+  // Replace bullets — pure helper handles dedup so duplicate bullets across
+  // roles each find their own paragraph instead of stacking on the first one.
+  const bulletResult = replaceBulletsInDocXml(docXml, rewrittenBullets || []);
+  docXml = bulletResult.docXml;
+  let replacedCount = bulletResult.replacedCount;
 
   // Add missing skills to the skills paragraph by appending to the last text run
   // (to preserve formatting — the first run is often bold like "Skills:")
