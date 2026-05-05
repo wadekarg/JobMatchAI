@@ -1,0 +1,14 @@
+{
+  "name": "jobmatchai",
+  "version": "1.0.5",
+  "private": true,
+  "description": "JobMatch AI Chrome extension — devDependencies are tests only; the extension itself ships as plain JS files with no build step.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "happy-dom": "^15.0.0",
+    "vitest": "^2.0.0"
+  }
+}

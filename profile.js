@@ -275,15 +275,24 @@ async function handleFile(file) {
 
   try {
     let rawText;
-    if (ext === 'pdf') {
-      rawText = await extractPDF(file);
-    } else {
-      rawText = await extractDOCX(file);
+    try {
+      if (ext === 'pdf') {
+        rawText = await extractPDF(file);
+      } else {
+        rawText = await extractDOCX(file);
+      }
+    } catch (parseErr) {
+      // Map cryptic library errors to actionable user messages.
+      setUploadStatus(humanizeParseError(ext, parseErr), 'error');
+      return;
     }
 
-    // A very short extraction usually means a scanned image PDF with no text layer
+    // A very short extraction usually means a scanned image PDF with no text layer.
     if (!rawText || rawText.trim().length < 20) {
-      setUploadStatus('Could not extract enough text from file.', 'error');
+      const msg = ext === 'pdf'
+        ? 'This PDF appears to be a scanned image (no extractable text). Try saving it as a searchable PDF, or upload your resume as DOCX.'
+        : 'Could not extract enough text from this DOCX. Try re-saving the file from Microsoft Word or Google Docs and upload again.';
+      setUploadStatus(msg, 'error');
       return;
     }
 
@@ -357,6 +366,28 @@ async function extractDOCX(file) {
   // mammoth.extractRawText strips all formatting and returns plain text
   const result = await mammoth.extractRawText({ arrayBuffer });
   return result.value;
+}
+
+/**
+ * Maps cryptic pdf.js / mammoth errors to user-actionable messages.
+ * If we don't recognize the error, fall back to the raw message so we still
+ * surface something rather than swallowing it.
+ */
+function humanizeParseError(ext, err) {
+  const raw = (err && err.message) || String(err || '');
+  if (ext === 'pdf') {
+    if (/password|encrypted/i.test(raw))      return 'This PDF is password-protected. Remove the password and upload again.';
+    if (/InvalidPDF|missing.*PDF|Invalid PDF/i.test(raw)) return 'This file is not a valid PDF. If you renamed a different file to .pdf, please convert it properly first.';
+    if (/worker/i.test(raw))                  return 'PDF parser failed to start. Reload the extension and try again.';
+    return 'Could not read this PDF (' + raw + '). Try re-saving it or uploading as DOCX.';
+  }
+  if (ext === 'docx') {
+    if (/Could not find file 'word\/document\.xml'|EndOfCentralDirectory|invalid.*zip/i.test(raw))
+      return 'This DOCX appears corrupted. Try re-saving it from Microsoft Word or Google Docs and upload again.';
+    if (/not.*docx|not a docx/i.test(raw))    return 'This file is not a valid DOCX. If you have a .doc, save it as .docx first.';
+    return 'Could not read this DOCX (' + raw + '). Try re-saving the file and uploading again.';
+  }
+  return 'Could not read this file (' + raw + ').';
 }
 
 // ─── Profile form population ──────────────────────────────────────────────────

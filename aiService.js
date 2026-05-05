@@ -52,11 +52,11 @@ const RETRY_DELAY_MS = 1000;
 /** Provider key used when no explicit provider is specified by the caller. */
 const DEFAULT_PROVIDER = 'anthropic';
 
-/** Maximum number of concurrent AI requests allowed. */
-const MAX_CONCURRENT = 3;
-
-/** Tracks the number of in-flight AI requests. */
-let activeRequests = 0;
+// Note: there used to be a MAX_CONCURRENT in-memory counter here. It didn't
+// work — MV3 service workers terminate after ~30s of idle and reset all
+// module-level state on every wake, so the counter could only ever
+// false-positive (rejecting requests across worker restarts). We rely on
+// per-provider 429 rate-limit handling in the retry path instead.
 
 // ─── Provider Registry ──────────────────────────────────────────────
 //
@@ -337,42 +337,32 @@ async function callAI(provider, apiKey, messages, options = {}) {
   const config = PROVIDERS[provider];
   if (!config) throw new Error(`Unknown provider: ${provider}`);
 
-  // Concurrency guard: prevent too many simultaneous AI requests.
-  if (activeRequests >= MAX_CONCURRENT) {
-    throw new Error('Too many AI requests in progress. Please wait a moment.');
-  }
+  // Consolidate call parameters, falling back to provider and global defaults.
+  const params = {
+    model: options.model || config.defaultModel,
+    temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+    maxTokens: options.maxTokens || 4096
+  };
 
-  activeRequests++;
-  try {
-    // Consolidate call parameters, falling back to provider and global defaults.
-    const params = {
-      model: options.model || config.defaultModel,
-      temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-      maxTokens: options.maxTokens || 4096
-    };
-
-    let lastError;
-    // Attempt the call up to (1 + MAX_RETRIES) times total.
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        // Exponential back-off: 1 s, 2 s, 4 s, … capped by MAX_RETRIES.
-        const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        await new Promise(r => setTimeout(r, delay));
-      }
-      try {
-        return await dispatchCall(config, apiKey, messages, params);
-      } catch (e) {
-        lastError = e;
-        // Retry on rate-limit (429) and transient server errors (5xx)
-        if (e.status === 429 || e.status === 500 || e.status === 502 || e.status === 503) continue;
-        throw wrapAIError(e);
-      }
+  let lastError;
+  // Attempt the call up to (1 + MAX_RETRIES) times total.
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      // Exponential back-off: 1 s, 2 s, 4 s, … capped by MAX_RETRIES.
+      const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      await new Promise(r => setTimeout(r, delay));
     }
-    // All retry attempts exhausted (429 after all retries) — wrap with user-friendly message.
-    throw wrapAIError(lastError);
-  } finally {
-    activeRequests--;
+    try {
+      return await dispatchCall(config, apiKey, messages, params);
+    } catch (e) {
+      lastError = e;
+      // Retry on rate-limit (429) and transient server errors (5xx)
+      if (e.status === 429 || e.status === 500 || e.status === 502 || e.status === 503) continue;
+      throw wrapAIError(e);
+    }
   }
+  // All retry attempts exhausted (429 after all retries) — wrap with user-friendly message.
+  throw wrapAIError(lastError);
 }
 
 /**
@@ -712,25 +702,49 @@ function parseJSONResponse(text) {
     } catch (_) { /* fall through */ }
   }
 
-  // Strategy 3: Try to find first { ... } or [ ... ] block
-  // Handles cases where the model prefixes/suffixes the JSON with explanation text.
-  const objMatch = text.match(/\{[\s\S]*\}/);
-  if (objMatch) {
+  // Strategy 3: Walk the string and extract the first balanced JSON value
+  // (object or array). The old greedy `/\{[\s\S]*\}/` would match across two
+  // unrelated objects, producing invalid JSON like
+  //   `{example} ... actually use {realJSON}` → fails to parse.
+  const balanced = extractFirstBalancedJSON(text);
+  if (balanced !== null) {
     try {
-      return JSON.parse(objMatch[0]);
-    } catch (_) { /* fall through */ }
-  }
-
-  // Strategy 4: Try to find a top-level JSON array if no object was found.
-  const arrMatch = text.match(/\[[\s\S]*\]/);
-  if (arrMatch) {
-    try {
-      return JSON.parse(arrMatch[0]);
+      return JSON.parse(balanced);
     } catch (_) { /* fall through */ }
   }
 
   // All strategies exhausted — the response cannot be parsed as JSON.
   throw new Error('Could not parse JSON from AI response');
+}
+
+/**
+ * Walks `text`, finds the first `{` or `[`, and returns the substring up to
+ * the matching closing brace/bracket. Skips braces inside string literals
+ * (handles escaped quotes). Returns null if no balanced value is found.
+ */
+function extractFirstBalancedJSON(text) {
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c !== '{' && c !== '[') continue;
+    const close = c === '{' ? '}' : ']';
+    let depth = 0;
+    let inStr = false;
+    let escape = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (escape)        { escape = false; continue; }
+      if (ch === '\\')   { escape = true;  continue; }
+      if (ch === '"')    { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === c)      depth++;
+      else if (ch === close) {
+        depth--;
+        if (depth === 0) return text.slice(i, j + 1);
+      }
+    }
+    // If we got here, the opener at i never closed — try the next opener.
+  }
+  return null;
 }
 
 // ─── Prompt templates ───────────────────────────────────────────────

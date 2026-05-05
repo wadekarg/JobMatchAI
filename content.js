@@ -40,6 +40,11 @@
   if (window.__jobmatchAILoaded) return;
   window.__jobmatchAILoaded = true;
 
+  // URL normalizer is loaded as a content script before us (see manifest.json).
+  // Strips UTM/click-id noise so the analysis cache + applied-job dedupe work.
+  // Defensive fallback if the helper failed to load for some reason.
+  const normalizeUrl = (globalThis.JMUrlKey && globalThis.JMUrlKey.normalizeUrlForCache) || (u => u);
+
   // ─── State ──────────────────────────────────────────────────────
   // Module-level variables shared across functions within this IIFE.
 
@@ -79,13 +84,14 @@
   const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24-hour TTL for cache entries
 
   async function getCachedAnalysis(url) {
+    const key = normalizeUrl(url);
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
-    const entry = cache[url];
+    const entry = cache[key];
     if (!entry) return null;
     // Expire entries older than 24 hours
     if (entry.timestamp && Date.now() - entry.timestamp > CACHE_TTL_MS) {
-      delete cache[url];
+      delete cache[key];
       await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: cache });
       return null;
     }
@@ -100,9 +106,10 @@
    * @param {Object} data - The analysis payload to cache.
    */
   async function setCachedAnalysis(url, data) {
+    const key = normalizeUrl(url);
     const result = await chrome.storage.local.get(CACHE_STORAGE_KEY);
     const cache = result[CACHE_STORAGE_KEY] || {};
-    cache[url] = { ...data, timestamp: Date.now() };
+    cache[key] = { ...data, timestamp: Date.now() };
     // Evict oldest entries (Object.keys preserves insertion order in V8)
     const keys = Object.keys(cache);
     if (keys.length > MAX_CACHE_ENTRIES) {
@@ -1599,7 +1606,8 @@
       const jobs = await sendMessage({ type: 'GET_SAVED_JOBS' });
       const btn = shadowRoot.getElementById('jmSaveJob');
       if (!btn) return;
-      if (jobs && jobs.some(j => j.url === window.location.href)) {
+      const here = normalizeUrl(window.location.href);
+      if (jobs && jobs.some(j => normalizeUrl(j.url) === here)) {
         btn.textContent = 'Saved';
         btn.disabled = true;
         btn.style.opacity = '0.7';
@@ -2253,7 +2261,10 @@
    */
   async function analyzeJob(forceRefresh) {
     const btn = shadowRoot.getElementById('jmAnalyze');
-    const pageUrl = window.location.href;
+    // Normalize once. Used as cache key and stored on currentAnalysis so
+    // downstream (Save / Mark Applied) and the background dedupe see the
+    // same key for the same job, regardless of the source URL.
+    const pageUrl = normalizeUrl(window.location.href);
 
     // Check cache first (unless force re-analyze)
     const cached = await getCachedAnalysis(pageUrl);
@@ -2523,7 +2534,8 @@
   async function checkIfApplied() {
     try {
       const jobs = await sendMessage({ type: 'GET_APPLIED_JOBS' });
-      if (jobs && jobs.some(j => j.url === window.location.href)) {
+      const here = normalizeUrl(window.location.href);
+      if (jobs && jobs.some(j => normalizeUrl(j.url) === here)) {
         const btn = shadowRoot.getElementById('jmMarkApplied');
         btn.textContent = 'Applied';
         btn.className = 'jm-btn jm-btn-applied-done';
@@ -3914,11 +3926,14 @@
    */
   async function loadJobNotes() {
     try {
-      const url = window.location.href;
+      const url = normalizeUrl(window.location.href);
       const result = await chrome.storage.local.get(NOTES_STORAGE_KEY);
       const notes = result[NOTES_STORAGE_KEY] || {};
       const textarea = shadowRoot && shadowRoot.getElementById('jmNotesInput');
-      if (textarea) textarea.value = notes[url] || '';
+      // Try the normalized key first, then fall back to raw URL for any
+      // notes saved by the pre-I2 code path so the user doesn't lose them.
+      const value = notes[url] || notes[window.location.href] || '';
+      if (textarea) textarea.value = value;
     } catch (e) { /* ignore */ }
   }
 
@@ -3930,7 +3945,7 @@
    */
   async function saveJobNotes() {
     try {
-      const url = window.location.href;
+      const url = normalizeUrl(window.location.href);
       const textarea = shadowRoot && shadowRoot.getElementById('jmNotesInput');
       if (!textarea) return;
       const result = await chrome.storage.local.get(NOTES_STORAGE_KEY);
@@ -3941,6 +3956,9 @@
       } else {
         delete notes[url];
       }
+      // Drop any duplicate entry under the unnormalized URL left by older
+      // versions of this function so we don't show stale notes elsewhere.
+      if (url !== window.location.href) delete notes[window.location.href];
       // Prune to 200 entries
       const keys = Object.keys(notes);
       if (keys.length > 200) keys.slice(0, keys.length - 200).forEach(k => delete notes[k]);
@@ -4123,14 +4141,14 @@
   // these history.pushState navigations, allowing us to reset the panel state
   // and inform the user that a new job has been detected.
 
-  let _lastUrl = window.location.href;
+  let _lastUrl = normalizeUrl(window.location.href);
   let _urlCheckTimer = null;
   const _spaObserver = new MutationObserver(() => {
     // Debounce: URL check runs at most once per 250ms to avoid firing on every DOM mutation
     if (_urlCheckTimer) return;
     _urlCheckTimer = setTimeout(() => {
       _urlCheckTimer = null;
-      const currentUrl = window.location.href;
+      const currentUrl = normalizeUrl(window.location.href);
       if (currentUrl === _lastUrl) return;
       _lastUrl = currentUrl;
       currentAnalysis = null;

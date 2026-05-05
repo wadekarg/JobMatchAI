@@ -68,6 +68,10 @@ import {
 // Rule-based matcher that resolves common dropdown questions without an AI call
 import { deterministicFieldMatcher } from './deterministicMatcher.js';
 
+// URL normalizer for cache/dedupe keys (I2). Same logic as lib/urlKey.js;
+// see tests/unit/urlKey-parity.test.js — change both copies together.
+import { normalizeUrlForCache } from './lib/urlKey.mjs';
+
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 //
@@ -441,8 +445,10 @@ async function getAppliedJobs() {
  */
 async function handleMarkApplied(jobData) {
   const jobs = await getAppliedJobs();
-  // Deduplicate by URL: applying to the same posting twice should be a no-op
-  if (jobs.some(j => j.url === jobData.url)) {
+  // Deduplicate by *normalized* URL so the same posting opened from
+  // different sources (UTM tags, click IDs, etc.) doesn't double-count.
+  const incoming = normalizeUrlForCache(jobData.url || '');
+  if (jobs.some(j => normalizeUrlForCache(j.url || '') === incoming)) {
     return { success: true, duplicate: true };
   }
   const job = {
