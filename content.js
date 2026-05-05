@@ -45,6 +45,11 @@
   // Defensive fallback if the helper failed to load for some reason.
   const normalizeUrl = (globalThis.JMUrlKey && globalThis.JMUrlKey.normalizeUrlForCache) || (u => u);
 
+  // Field-name allowlist (C3b). Drops CSRF/tracking/honeypot inputs from
+  // the autofill pipeline so prompt-injection or buggy label extraction
+  // can't trick us into writing into them.
+  const isFieldEligible = (globalThis.JMFieldFilter && globalThis.JMFieldFilter.isFieldEligible) || (() => true);
+
   // ─── State ──────────────────────────────────────────────────────
   // Module-level variables shared across functions within this IIFE.
 
@@ -60,7 +65,12 @@
   let _analyzeGen = 0;
 
   // AutoFill state
-  let _fieldMap       = {};   // Map of question_id → { el, type, ... } built during field detection
+  let _fieldMap        = {};   // Map of question_id → { el, type, ... } built during field detection
+  // Preview-gate state (C5). Set when the AI returns proposed answers and
+  // we show the review UI; cleared when the user clicks Apply or Cancel
+  // (or when SPA navigation invalidates the in-flight autofill).
+  let _pendingAnswers   = null;
+  let _pendingQuestions = null;
 
   // Autofill badges — fixed-position pills that don't affect page layout
   let _badges            = [];        // [{ badgeEl, fieldEl, place }] for repositioning + cleanup
@@ -586,12 +596,45 @@
         border: 1px solid var(--jm-border);
       }
       /* Sections that contain card children (bullets, cover letter) — no card bg */
-      #jmBulletSection, #jmCoverLetterSection {
+      #jmBulletSection, #jmCoverLetterSection, #jmAutofillPreview {
         background: none;
         border: none;
         padding: 0;
         overflow: visible;
       }
+
+      /* AutoFill preview (C5) */
+      .jm-preview-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        max-height: 240px;
+        overflow-y: auto;
+        margin-bottom: 4px;
+      }
+      .jm-preview-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 7px 8px;
+        background: var(--jm-card-bg);
+        border-radius: 6px;
+        border: 1px solid var(--jm-border);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .jm-preview-row input[type="checkbox"] {
+        margin-top: 2px;
+        flex-shrink: 0;
+        accent-color: var(--jm-primary);
+        width: 14px;
+        height: 14px;
+      }
+      .jm-preview-label { font-weight: 600; color: var(--jm-text); }
+      .jm-preview-val { color: var(--jm-text-secondary); word-break: break-word; }
+      .jm-preview-row.jm-needs-input { background: #fffbeb; border-color: #fde68a; }
+      .jm-preview-row.jm-needs-input .jm-preview-val { color: #92400e; }
+      .jm-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
 
       /* Tailored Resume Section */
       #jmTailoredResumeSection {
@@ -1305,6 +1348,18 @@
           </div>
         </div>
 
+        <!-- Autofill preview gate (C5). Shown after the AI returns proposed
+             answers; the user reviews each and approves before any field is
+             actually written to. Default state is display:none. -->
+        <div class="jm-section" id="jmAutofillPreview" style="display:none">
+          <h3>Review before fill <span id="jmPreviewCount" style="font-weight:400;color:var(--jm-text-secondary);text-transform:none;letter-spacing:0"></span></h3>
+          <div class="jm-preview-list" id="jmPreviewList"></div>
+          <div class="jm-preview-actions">
+            <button class="jm-btn jm-btn-primary" id="jmApplyFill" style="flex:1">Apply Selected</button>
+            <button class="jm-btn jm-btn-secondary" id="jmCancelFill">Cancel</button>
+          </div>
+        </div>
+
         <div class="jm-score-section" id="jmScoreSection">
           <div class="jm-score-circle" id="jmScoreCircle">--</div>
           <div class="jm-score-label">Match Score</div>
@@ -1429,6 +1484,9 @@
       shadowRoot.getElementById('jmAddBulletInput').value = '';
     });
     panel.querySelector('#jmAddBulletGenerate').addEventListener('click', generateCustomBullet);
+    // Autofill preview gate (C5)
+    panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
+    panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
       const text = shadowRoot.getElementById('jmCoverLetterText').textContent;
       navigator.clipboard.writeText(text).then(() => {
@@ -2649,16 +2707,13 @@
       });
       console.log('[JobMatch AI] AI response received');
 
-      // Step 3: directly fill the form
+      // Step 3 (C5): show the preview-and-confirm UI instead of writing
+      // straight to the form. The user reviews each proposed answer and
+      // explicitly approves the fill — defends against the prompt-injection
+      // path where a malicious JD coaxes the AI into bad answers.
       const answers = response.answers || response;
-      const { filled, skipped } = await fillFormFromAnswers(answers);
-      const msg = `Filled ${filled} field${filled === 1 ? '' : 's'}` +
-        (skipped.length ? ` (${skipped.length} need your input)` : '');
-      setStatus(msg, 'success');
-      setTimeout(clearStatus, 3000);
-      // Show review warning
-      const warning = shadowRoot && shadowRoot.getElementById('jmAutofillWarning');
-      if (warning) warning.style.display = 'flex';
+      showAutofillPreview(answers, questionsForAI);
+      setStatus('Review proposed answers and click Apply Selected.', 'info');
     } catch (err) {
       console.error('[JobMatch AI] AutoFill error:', err);
       setStatus('Error: ' + err.message, 'error');
@@ -2666,6 +2721,110 @@
       btn.disabled = false;
       btn.innerHTML = 'AutoFill Application';
     }
+  }
+
+  // ─── Autofill preview gate (C5) ───────────────────────────────
+  // Before any field is written to, the user sees every proposed answer
+  // and approves with a single click. Defends against prompt-injection
+  // (a malicious JD coaxes the AI into bad answers) and against bugs in
+  // field detection that would otherwise silently land in the form.
+
+  /**
+   * Renders the proposed answers in the preview panel and stashes them
+   * in module state so applyAutofill can act on the user's selection.
+   */
+  function showAutofillPreview(answers, questions) {
+    const previewSection = shadowRoot.getElementById('jmAutofillPreview');
+    const list           = shadowRoot.getElementById('jmPreviewList');
+    const countEl        = shadowRoot.getElementById('jmPreviewCount');
+
+    _pendingAnswers   = Array.isArray(answers) ? answers : [];
+    _pendingQuestions = Array.isArray(questions) ? questions : [];
+
+    const questionMap = {};
+    _pendingQuestions.forEach(q => { questionMap[q.question_id] = q; });
+
+    list.innerHTML = '';
+    let fillableCount = 0;
+    let needsInputCount = 0;
+
+    _pendingAnswers.forEach(ans => {
+      const val = ans.selected_option || ans.generated_text || '';
+      const isNeeded = !val || val === 'NEEDS_USER_INPUT';
+      const qInfo  = questionMap[ans.question_id];
+      const label  = qInfo?.question_text || ans.question_id || '';
+
+      if (isNeeded) needsInputCount++; else fillableCount++;
+
+      const row = document.createElement('div');
+      row.className = 'jm-preview-row' + (isNeeded ? ' jm-needs-input' : '');
+      row.dataset.qid = ans.question_id;
+
+      if (isNeeded) {
+        row.innerHTML = `
+          <div style="flex:1">
+            <div class="jm-preview-label">${escapeHTML(label)}</div>
+            <div class="jm-preview-val">&#9888; Needs manual input</div>
+          </div>`;
+      } else {
+        const displayVal = val.length > 70 ? val.substring(0, 70) + '…' : val;
+        row.innerHTML = `
+          <input type="checkbox" checked data-qid="${escapeHTML(ans.question_id)}">
+          <div style="flex:1;min-width:0">
+            <div class="jm-preview-label">${escapeHTML(label)}</div>
+            <div class="jm-preview-val" title="${escapeHTML(val)}">${escapeHTML(displayVal)}</div>
+          </div>`;
+      }
+      list.appendChild(row);
+    });
+
+    countEl.textContent = `— ${fillableCount} fillable, ${needsInputCount} need manual input`;
+    previewSection.style.display = 'block';
+    if (typeof scrollPanelTo === 'function') scrollPanelTo(previewSection);
+  }
+
+  /**
+   * Applies the pending autofill answers, filtered by which checkboxes the
+   * user left checked. Shows the post-fill review warning and clears state.
+   */
+  async function applyAutofill() {
+    if (!_pendingAnswers) return;
+    const applyBtn = shadowRoot.getElementById('jmApplyFill');
+    applyBtn.disabled = true;
+    applyBtn.innerHTML = '<span class="jm-spinner"></span> Filling...';
+
+    try {
+      const checkedIds = new Set(
+        Array.from(shadowRoot.querySelectorAll('#jmPreviewList input[type="checkbox"]:checked'))
+          .map(cb => cb.dataset.qid)
+      );
+      const selected = _pendingAnswers.filter(a => checkedIds.has(a.question_id));
+
+      const { filled, skipped } = await fillFormFromAnswers(selected);
+      let msg = `Filled ${filled} of ${selected.length} selected fields.`;
+      if (skipped.length > 0) msg += ` ${skipped.length} could not be filled — check manually.`;
+      setStatus(msg, 'success');
+
+      const warningEl = shadowRoot && shadowRoot.getElementById('jmAutofillWarning');
+      if (warningEl) warningEl.style.display = 'flex';
+
+      shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
+      _pendingAnswers   = null;
+      _pendingQuestions = null;
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    } finally {
+      applyBtn.disabled = false;
+      applyBtn.innerHTML = 'Apply Selected';
+    }
+  }
+
+  /** Closes the preview without filling anything. */
+  function cancelAutofill() {
+    shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
+    _pendingAnswers   = null;
+    _pendingQuestions = null;
+    clearStatus();
   }
 
   // ─── Form field detection ─────────────────────────────────────
@@ -2743,6 +2902,9 @@
     document.querySelectorAll('select').forEach(sel => {
       const qid = sel.id || sel.name;
       if (!qid || seen.has(qid)) return;
+      // C3b: skip CSRF/tracking/honeypot fields entirely — never send them
+      // to the AI, never offer them to the user as autofill candidates.
+      if (!isFieldEligible(sel)) return;
       const label = getFieldLabel(sel);
       if (!label && !sel.id && !sel.name) return;
 
@@ -2766,6 +2928,8 @@
       'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea'
     ).forEach(input => {
       if (input.offsetParent === null) return;
+      // C3b: skip CSRF/tracking/honeypot fields.
+      if (!isFieldEligible(input)) return;
       const label = getFieldLabel(input);
       const qid = input.id || input.name || ('q_' + qIndex);
       if ((!label && !input.id && !input.name) || seen.has(qid)) return;
@@ -2838,6 +3002,8 @@
       if (radio.offsetParent === null) return;
       const groupName = radio.name;
       if (!groupName) return;
+      // C3b: skip groups whose name looks like CSRF/tracking/etc.
+      if (!isFieldEligible(radio)) return;
       if (!radioGroups[groupName]) {
         radioGroups[groupName] = {
           question_id: groupName,
@@ -2867,6 +3033,8 @@
     // ── 4. Standalone checkboxes ──
     document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       if (cb.offsetParent === null) return;
+      // C3b: skip honeypot / token-shaped checkboxes.
+      if (!isFieldEligible(cb)) return;
       const label = getFieldLabel(cb) || getRadioLabel(cb);
       if (!label) return;
       const qid = cb.id || cb.name || ('cb_' + qIndex);
@@ -4041,6 +4209,12 @@
         setTimeout(autofillForm, 300);
         sendResponse({ success: true });
         break;
+      case 'SPA_URL_CHANGED':
+        // Background webNavigation listener tells us the URL changed via
+        // history.pushState (replaces the old MutationObserver).
+        handleSpaUrlChanged();
+        sendResponse({ success: true });
+        break;
     }
     return true;
   });
@@ -4160,49 +4334,48 @@
   }
 
   // ─── SPA URL change detection (LinkedIn, Indeed, etc.) ────────
-  // LinkedIn and Indeed navigate between job listings without a full page reload.
-  // A MutationObserver on document.body catches the DOM mutations that accompany
-  // these history.pushState navigations, allowing us to reset the panel state
-  // and inform the user that a new job has been detected.
+  // The background service worker uses chrome.webNavigation.onHistoryStateUpdated
+  // and forwards a SPA_URL_CHANGED message to this frame whenever the URL
+  // changes via pushState/replaceState/popstate. That replaces a heavy
+  // MutationObserver(subtree:true on document.body) that used to run on every
+  // page in every iframe (C6 in the audit).
 
   let _lastUrl = normalizeUrl(window.location.href);
-  let _urlCheckTimer = null;
-  const _spaObserver = new MutationObserver(() => {
-    // Debounce: URL check runs at most once per 250ms to avoid firing on every DOM mutation
-    if (_urlCheckTimer) return;
-    _urlCheckTimer = setTimeout(() => {
-      _urlCheckTimer = null;
-      const currentUrl = normalizeUrl(window.location.href);
-      if (currentUrl === _lastUrl) return;
-      _lastUrl = currentUrl;
-      // Bump the analyze generation so any in-flight analyzeJob() against
-      // the previous URL becomes stale and bails before touching the UI (I3).
-      _analyzeGen++;
-      currentAnalysis = null;
-      _fieldMap = {};
-      clearAutofillBadges();
-      if (shadowRoot && panelOpen) {
-        const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
-        if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
-        const autofillBtn = shadowRoot.getElementById('jmAutofill');
-        if (autofillBtn) { autofillBtn.innerHTML = 'AutoFill Application'; autofillBtn.onclick = null; }
-        [
-          'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
-          'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
-          'jmAutofillWarning', 'jmCoverLetterSection', 'jmBulletSection',
-          'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
-        ].forEach(id => {
-          const el = shadowRoot.getElementById(id);
-          if (el) el.style.display = 'none';
-        });
-        loadJobNotes();
-        loadSlotState();
-        setStatus('New job detected — click Analyze Job.', 'info');
-        setTimeout(clearStatus, 3000);
-      }
-    }, 250);
-  });
-  _spaObserver.observe(document.body, { childList: true, subtree: true });
+
+  function handleSpaUrlChanged() {
+    const currentUrl = normalizeUrl(window.location.href);
+    if (currentUrl === _lastUrl) return;
+    _lastUrl = currentUrl;
+    // Bump the analyze generation so any in-flight analyzeJob() against
+    // the previous URL becomes stale and bails before touching the UI (I3).
+    _analyzeGen++;
+    currentAnalysis = null;
+    _fieldMap = {};
+    // Discard any pending autofill preview from the previous page (C5).
+    _pendingAnswers   = null;
+    _pendingQuestions = null;
+    clearAutofillBadges();
+    if (shadowRoot && panelOpen) {
+      const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
+      if (analyzeBtn && analyzeBtn.textContent === 'Re-Analyze') analyzeBtn.textContent = 'Analyze Job';
+      const autofillBtn = shadowRoot.getElementById('jmAutofill');
+      if (autofillBtn) { autofillBtn.innerHTML = 'AutoFill Application'; autofillBtn.onclick = null; }
+      [
+        'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
+        'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
+        'jmAutofillWarning', 'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
+        'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
+      ].forEach(id => {
+        const el = shadowRoot.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      loadJobNotes();
+      loadSlotState();
+      setStatus('New job detected — click Analyze Job.', 'info');
+      setTimeout(clearStatus, 3000);
+    }
+  }
+
   checkIfApplied();
 
 })();

@@ -758,6 +758,43 @@ function extractFirstBalancedJSON(text) {
 // the likelihood of the model wrapping its response in prose or markdown.
 //
 
+// ─── Prompt-injection hardening (C3a) ──────────────────────────────
+//
+// The prompts below wrap user-controlled strings (resume text, job
+// descriptions, page content) inside XML-like tags such as <job_description>.
+// A malicious job posting can include the literal closing tag in its body
+// and inject instructions that the model will follow as if they were the
+// user's. We defend by inserting a zero-width space inside any tag-shaped
+// substring in the wrapped content, neutralizing the boundary while keeping
+// the visible text intact.
+
+/**
+ * Returns a copy of `body` with any `<tag>` / `</tag>` substring (case-
+ * insensitive) broken by a zero-width space, so the AI cannot be tricked
+ * out of the wrapping tag region.
+ * @param {string} body
+ * @param {string} tag - bare tag name, e.g. 'job_description'
+ * @returns {string}
+ */
+function sanitizeForTag(body, tag) {
+  if (typeof body !== 'string' || !body) return body || '';
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Catch <tag>, </tag>, < /tag>, < / tag >, <TAG>, etc. Real LLMs are
+  // forgiving with whitespace, so the regex must be too. Insert a U+200B
+  // right after '<' to break any of those sequences.
+  const re = new RegExp('<(\\s*/?\\s*)(' + escaped + ')\\b', 'gi');
+  return body.replace(re, '<​$1$2');
+}
+
+/**
+ * Wraps `body` inside `<tag>...</tag>` after sanitizing it. Use this in
+ * place of inline `<tag>\n${body}\n</tag>` for any string that originates
+ * from outside the extension (page DOM, AI output that we re-include, etc.).
+ */
+function wrapTag(tag, body) {
+  return `<${tag}>\n${sanitizeForTag(body, tag)}\n</${tag}>`;
+}
+
 // ─── Prompt: Resume Parser ────────────────────────────────────────
 
 /**
@@ -862,16 +899,12 @@ Return ONLY a JSON object:
 }
 
 RESUME:
-<user_profile>
-${resumeText}
-</user_profile>
+${wrapTag('user_profile', resumeText)}
 
 JOB TITLE: ${jobTitle || 'Not specified'}
 COMPANY: ${company || 'Not specified'}
 JOB DESCRIPTION:
-<job_description>
-${jobDescription}
-</job_description>`
+${wrapTag('job_description', jobDescription)}`
     }
   ];
 }
@@ -958,9 +991,7 @@ OUTPUT FORMAT (JSON only, no markdown, no explanation):
 - Text/textarea → generated_text only
 
 USER PROFILE:
-<user_profile>
-${resumeText}
-</user_profile>
+${wrapTag('user_profile', resumeText)}
 
 FORM FIELDS (with Q&A hints where available):
 ${JSON.stringify(fieldsWithHints, null, 2)}
@@ -1015,9 +1046,7 @@ ${qaText || 'None saved'}
 </user_qa_answers>
 
 USER PROFILE:
-<user_profile>
-${profileText || 'None'}
-</user_profile>
+${wrapTag('user_profile', profileText || 'None')}
 
 STEP-BY-STEP INSTRUCTIONS:
 1. Read the form question carefully.
@@ -1106,14 +1135,10 @@ RULES:
 - Start directly with the first sentence of paragraph one
 
 RESUME:
-<user_profile>
-${resumeText}
-</user_profile>
+${wrapTag('user_profile', resumeText)}
 
 JOB DESCRIPTION:
-<job_description>
-${jobDescription}
-</job_description>
+${wrapTag('job_description', jobDescription)}
 
 CANDIDATE'S MATCHING SKILLS: ${matchingSkills || 'see resume'}
 
@@ -1164,14 +1189,10 @@ RULES:
 - Return JSON only — no markdown, no commentary
 
 CURRENT EXPERIENCE:
-<user_profile>
-${experience}
-</user_profile>
+${wrapTag('user_profile', experience)}
 
 JOB DESCRIPTION (excerpt):
-<job_description>
-${jobDescription.substring(0, 3000)}
-</job_description>
+${wrapTag('job_description', jobDescription.substring(0, 3000))}
 
 Return ONLY a JSON array:
 [
@@ -1227,19 +1248,13 @@ RULES:
 - Do NOT wrap the output in markdown code fences — return raw HTML only
 
 CANDIDATE PROFILE:
-<user_profile>
-${profileText}
-</user_profile>
+${wrapTag('user_profile', profileText)}
 
 IMPROVED RESUME BULLETS:
-<improved_bullets>
-${bulletsText}
-</improved_bullets>
+${wrapTag('improved_bullets', bulletsText)}
 
 TARGET JOB DESCRIPTION:
-<job_description>
-${jobDescription.substring(0, 3000)}
-</job_description>
+${wrapTag('job_description', jobDescription.substring(0, 3000))}
 
 Return ONLY the complete HTML document. No commentary, no markdown.`
     }
@@ -1289,14 +1304,10 @@ ${skillsGuidance}
 ${editContext}
 
 ORIGINAL BULLET:
-<original_bullet>
-${originalBullet}
-</original_bullet>
+${wrapTag('original_bullet', originalBullet)}
 
 JOB DESCRIPTION (excerpt):
-<job_description>
-${jobDescription.substring(0, 2000)}
-</job_description>
+${wrapTag('job_description', jobDescription.substring(0, 2000))}
 
 Return ONLY the rewritten bullet text.`
     }
@@ -1345,14 +1356,10 @@ ${skillsGuidance}
 ROLE/PROJECT THIS IS FOR: ${targetRole}
 
 USER'S DESCRIPTION:
-<user_description>
-${description}
-</user_description>
+${wrapTag('user_description', description)}
 
 JOB DESCRIPTION (excerpt):
-<job_description>
-${jobDescription.substring(0, 2000)}
-</job_description>
+${wrapTag('job_description', jobDescription.substring(0, 2000))}
 
 Return ONLY the polished bullet text.`
     }
@@ -1388,6 +1395,8 @@ export {
   callAI,
   PROVIDERS,
   parseJSONResponse,
+  sanitizeForTag,
+  wrapTag,
   buildResumeParsePrompt,
   buildJobAnalysisPrompt,
   buildAutofillPrompt,

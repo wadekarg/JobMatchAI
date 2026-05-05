@@ -17,6 +17,10 @@
   const DEBUG = false;
   const dbg = (...args) => { if (DEBUG) console.log('[JobMatch AI]', ...args); };
 
+  // C3b — skip CSRF/tracking/honeypot fields. Fallback no-op if the helper
+  // failed to load so we don't break direct-fill silently.
+  const isFieldEligible = (globalThis.JMFieldFilter && globalThis.JMFieldFilter.isFieldEligible) || (() => true);
+
   // ─── Label extraction (tries multiple strategies) ───────────────
 
   function getElementLabel(el) {
@@ -274,6 +278,9 @@
       // Skip hidden inputs inside React Select containers
       if (input.closest('[class*="css-"][class*="-container"]') || input.closest('[class*="select__"]')) continue;
       if (input.type === 'hidden') continue;
+      // C3b: never touch CSRF/tracking/honeypot fields, even if their label
+      // happens to match a Q&A entry.
+      if (!isFieldEligible(input)) continue;
 
       const label = getElementLabel(input);
       if (!label) continue;
@@ -293,6 +300,7 @@
     // ── 2. Native <select> elements ──
     const selects = document.querySelectorAll('select');
     for (const sel of selects) {
+      if (!isFieldEligible(sel)) continue; // C3b
       const label = getElementLabel(sel);
       if (!label) continue;
 
@@ -319,6 +327,7 @@
     document.querySelectorAll('input[type="radio"]').forEach(r => {
       const name = r.name;
       if (!name) return;
+      if (!isFieldEligible(r)) return; // C3b
       if (!radioGroups[name]) radioGroups[name] = [];
       radioGroups[name].push(r);
     });
@@ -348,6 +357,7 @@
     // ── 4. Checkboxes (only for Yes/No type questions, not multi-select) ──
     // Skip checkboxes that look like multi-select options (city names, skills, etc.)
     document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (!isFieldEligible(cb)) return; // C3b
       const label = getElementLabel(cb);
       if (!label) return;
 

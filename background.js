@@ -1085,3 +1085,24 @@ chrome.runtime.onInstalled.addListener((details) => {
     });
   }
 });
+
+// ─── SPA navigation detection (replaces MutationObserver in content.js) ──────
+//
+// LinkedIn / Indeed / Glassdoor route between job postings via history.pushState
+// without a full page reload. Previously content.js watched the entire <body>
+// subtree with MutationObserver — a heavy listener running on every page in
+// every iframe (the C6 finding from the audit). chrome.webNavigation gives us
+// the same signal natively, with zero per-mutation overhead.
+//
+// Fires for pushState / replaceState / popstate / hash changes. We forward
+// the event to the specific frame whose URL changed; the content script
+// there compares against its own window.location.href and resets if needed.
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  // Best-effort delivery — the content script may not be loaded in this
+  // frame (e.g. cross-origin iframes our manifest doesn't match).
+  chrome.tabs.sendMessage(
+    details.tabId,
+    { type: 'SPA_URL_CHANGED', url: details.url },
+    { frameId: details.frameId }
+  ).catch(() => {});
+});
