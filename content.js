@@ -50,14 +50,7 @@
   let toggleBtnRef = null;      // Reference to the floating toggle button (inside closed Shadow DOM)
 
   // AutoFill state
-  let _pendingAnswers = null;
   let _fieldMap       = {};   // Map of question_id → { el, type, ... } built during field detection
-
-  // Inline chip state — chips live in document.body (outside Shadow DOM)
-  let _chips             = new Map(); // questionId → { chipEl, fieldEl, ans }
-  let _chipBar           = null;      // sticky bottom bar element
-  let _chipScrollHandler = null;      // scroll listener reference (for cleanup)
-  let _chipResizeObs     = null;      // ResizeObserver reference (for cleanup)
 
   // Autofill badges — fixed-position pills that don't affect page layout
   let _badges            = [];        // [{ badgeEl, fieldEl, place }] for repositioning + cleanup
@@ -581,7 +574,7 @@
         border: 1px solid var(--jm-border);
       }
       /* Sections that contain card children (bullets, cover letter) — no card bg */
-      #jmBulletSection, #jmCoverLetterSection, #jmAutofillPreview {
+      #jmBulletSection, #jmCoverLetterSection {
         background: none;
         border: none;
         padding: 0;
@@ -811,39 +804,6 @@
         margin-bottom: 10px;
         display: none;
       }
-
-      /* AutoFill preview */
-      .jm-preview-list {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        max-height: 240px;
-        overflow-y: auto;
-        margin-bottom: 4px;
-      }
-      .jm-preview-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-        padding: 7px 8px;
-        background: var(--jm-card-bg);
-        border-radius: 6px;
-        border: 1px solid var(--jm-border);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-      .jm-preview-row input[type="checkbox"] {
-        margin-top: 2px;
-        flex-shrink: 0;
-        accent-color: var(--jm-primary);
-        width: 14px;
-        height: 14px;
-      }
-      .jm-preview-label { font-weight: 600; color: var(--jm-text); }
-      .jm-preview-val { color: var(--jm-text-secondary); word-break: break-word; }
-      .jm-preview-row.jm-needs-input { background: #fffbeb; border-color: #fde68a; }
-      .jm-preview-row.jm-needs-input .jm-preview-val { color: #92400e; }
-      .jm-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
 
       /* Cover letter */
       .jm-cover-letter {
@@ -1371,16 +1331,6 @@
           &#9888; Note: Your resume was truncated for analysis. Consider shortening it for better results.
         </div>
 
-        <!-- AutoFill preview -->
-        <div class="jm-section" id="jmAutofillPreview" style="display:none">
-          <h3>Review Autofill <span id="jmPreviewCount" style="font-weight:400;color:var(--jm-text-secondary);text-transform:none;letter-spacing:0"></span></h3>
-          <div class="jm-preview-list" id="jmPreviewList"></div>
-          <div class="jm-preview-actions">
-            <button class="jm-btn jm-btn-primary" id="jmApplyFill" style="flex:1">Apply Selected</button>
-            <button class="jm-btn jm-btn-secondary" id="jmCancelFill">Cancel</button>
-          </div>
-        </div>
-
         <!-- Cover letter output -->
         <div class="jm-section" id="jmCoverLetterSection" style="display:none">
           <div class="jm-section-head">
@@ -1467,8 +1417,6 @@
       shadowRoot.getElementById('jmAddBulletInput').value = '';
     });
     panel.querySelector('#jmAddBulletGenerate').addEventListener('click', generateCustomBullet);
-    panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
-    panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
       const text = shadowRoot.getElementById('jmCoverLetterText').textContent;
       navigator.clipboard.writeText(text).then(() => {
@@ -2151,7 +2099,18 @@
     try {
       const host = window.location.hostname;
       const parts = host.split('.');
-      const skip = new Set(['jobs', 'careers', 'apply', 'hire', 'www', 'com', 'org', 'net', 'io', 'co', 'uk', 'boards', 'app']);
+      const skip = new Set([
+        // generic
+        'jobs', 'careers', 'apply', 'hire', 'www', 'com', 'org', 'net', 'io', 'co', 'uk', 'boards', 'app',
+        // ATS/job-board hostnames — never the actual employer
+        'greenhouse', 'lever', 'workday', 'myworkday', 'smartrecruiters',
+        'ashbyhq', 'ashby', 'workable', 'breezy', 'icims', 'taleo',
+        'jobvite', 'bamboohr', 'recruitee', 'teamtailor', 'pinpointhq',
+        'rippling', 'gusto', 'comeet', 'jazzhr',
+        // common job aggregators
+        'linkedin', 'indeed', 'glassdoor', 'ziprecruiter', 'monster',
+        'simplyhired', 'angel', 'wellfound', 'dice', 'builtin',
+      ]);
       for (const part of parts) {
         if (!skip.has(part) && part.length > 2) {
           // Capitalize first letter
@@ -2673,646 +2632,6 @@
     }
   }
 
-  /**
-   * Renders the autofill preview panel, showing each detected field alongside
-   * the AI's proposed answer.  Fields flagged as NEEDS_USER_INPUT are highlighted.
-   * Stores answers and questions in _pendingAnswers/_pendingQuestions for applyAutofill.
-   * @param {Array<Object>} answers   - AI answer objects from GENERATE_AUTOFILL.
-   * @param {Array<Object>} questions - Detected form field descriptors.
-   */
-  function showAutofillPreview(answers, questions) {
-    const previewSection = shadowRoot.getElementById('jmAutofillPreview');
-    const list = shadowRoot.getElementById('jmPreviewList');
-    const countEl = shadowRoot.getElementById('jmPreviewCount');
-
-    list.innerHTML = '';
-
-    const questionMap = {};
-    questions.forEach(q => { questionMap[q.question_id] = q; });
-
-    let fillableCount = 0;
-    let needsInputCount = 0;
-
-    (Array.isArray(answers) ? answers : []).forEach(ans => {
-      const val = ans.selected_option || ans.generated_text || '';
-      const isNeeded = !val || val === 'NEEDS_USER_INPUT';
-      const qInfo = questionMap[ans.question_id];
-      const label = qInfo?.question_text || ans.question_id || '';
-
-      if (isNeeded) needsInputCount++;
-      else fillableCount++;
-
-      const row = document.createElement('div');
-      row.className = 'jm-preview-row' + (isNeeded ? ' jm-needs-input' : '');
-      row.dataset.qid = ans.question_id;
-
-      if (isNeeded) {
-        row.innerHTML = `
-          <div style="flex:1">
-            <div class="jm-preview-label">${escapeHTML(label)}</div>
-            <div class="jm-preview-val">&#9888; Needs manual input</div>
-          </div>`;
-      } else {
-        const displayVal = val.length > 70 ? val.substring(0, 70) + '…' : val;
-        row.innerHTML = `
-          <input type="checkbox" checked data-qid="${escapeHTML(ans.question_id)}">
-          <div style="flex:1;min-width:0">
-            <div class="jm-preview-label">${escapeHTML(label)}</div>
-            <div class="jm-preview-val" title="${escapeHTML(val)}">${escapeHTML(displayVal)}</div>
-          </div>`;
-      }
-      list.appendChild(row);
-    });
-
-    countEl.textContent = `— ${fillableCount} fillable, ${needsInputCount} need manual input`;
-    previewSection.style.display = 'block';
-    scrollPanelTo(previewSection);
-  }
-
-  /**
-   * Applies the pending autofill answers to the form (phase 3 of the pipeline).
-   * Called when the user clicks "Apply Selected" in the preview panel.
-   * Shows a summary toast indicating how many fields were filled vs skipped.
-   * @async
-   */
-  async function applyAutofill() {
-    if (!_pendingAnswers) return;
-    const applyBtn = shadowRoot.getElementById('jmApplyFill');
-    applyBtn.disabled = true;
-    applyBtn.innerHTML = '<span class="jm-spinner"></span> Filling...';
-
-    try {
-      const checkedIds = new Set(
-        Array.from(shadowRoot.querySelectorAll('#jmPreviewList input[type="checkbox"]:checked'))
-          .map(cb => cb.dataset.qid)
-      );
-
-      const selectedAnswers = (Array.isArray(_pendingAnswers) ? _pendingAnswers : [])
-        .filter(a => checkedIds.has(a.question_id));
-
-      const { filled, skipped } = await fillFormFromAnswers(selectedAnswers);
-
-      let msg = `Filled ${filled} of ${selectedAnswers.length} selected fields.`;
-      if (skipped.length > 0) {
-        msg += ` ${skipped.length} could not be filled — check manually.`;
-      }
-      setStatus(msg, 'success');
-      // Show review warning
-      const warningEl = shadowRoot && shadowRoot.getElementById('jmAutofillWarning');
-      if (warningEl) warningEl.style.display = 'flex';
-
-      shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
-      _pendingAnswers = null;
-    } catch (err) {
-      setStatus('Error: ' + err.message, 'error');
-    } finally {
-      applyBtn.disabled = false;
-      applyBtn.innerHTML = 'Apply Selected';
-    }
-  }
-
-  /** Dismisses the autofill preview panel and clears pending state. */
-  function cancelAutofill() {
-    shadowRoot.getElementById('jmAutofillPreview').style.display = 'none';
-    _pendingAnswers = null;
-    clearStatus();
-  }
-
-  // ─── Inline autofill chips ────────────────────────────────────
-  // Chips are injected directly into document.body (not Shadow DOM) so they
-  // can be positioned right next to the actual form fields on the page.
-  // Each chip shows the AI's proposed answer with ✓ Accept, ✗ Dismiss, and
-  // inline editing. A sticky bar at the bottom provides Apply All / Dismiss All.
-
-  const CHIP_STYLE_ID = 'jmai-chip-styles'; // ID of the injected <style> tag
-
-  /**
-   * Injects chip CSS into document.head once. Uses a unique `jmai-` prefix
-   * to avoid colliding with the host page's styles.
-   */
-  function injectChipStyles() {
-    if (document.getElementById(CHIP_STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = CHIP_STYLE_ID;
-    style.textContent = `
-      .jmai-chip {
-        position: fixed;
-        z-index: 2147483640;
-        background: #fff;
-        border: 1.5px solid #3b82f6;
-        border-radius: 10px;
-        box-shadow: 0 3px 14px rgba(59,130,246,0.22);
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        padding: 5px 7px 5px 9px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 12px;
-        color: #1e293b;
-        max-width: 360px;
-        min-width: 140px;
-        pointer-events: all;
-        transition: opacity 0.18s, transform 0.18s;
-      }
-      .jmai-chip.jmai-needs-input {
-        border-color: #f59e0b;
-        background: #fffbeb;
-      }
-      .jmai-chip-icon { font-size: 12px; flex-shrink: 0; color: #3b82f6; }
-      .jmai-chip.jmai-needs-input .jmai-chip-icon { color: #f59e0b; }
-      .jmai-chip-answer {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        cursor: text;
-        padding: 2px 4px;
-        border-radius: 4px;
-        border: 1px solid transparent;
-        font-size: 12px;
-      }
-      .jmai-chip-answer:focus {
-        outline: none;
-        border-color: #3b82f6;
-        background: #eff6ff;
-        white-space: normal;
-        overflow: visible;
-      }
-      .jmai-chip-answer[data-empty]:before {
-        content: attr(data-placeholder);
-        color: #94a3b8;
-        font-style: italic;
-      }
-      .jmai-chip-accept, .jmai-chip-dismiss {
-        flex-shrink: 0;
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        border: none;
-        cursor: pointer;
-        font-size: 13px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        line-height: 1;
-      }
-      .jmai-chip-accept { background: #059669; color: #fff; }
-      .jmai-chip-accept:hover { background: #047857; }
-      .jmai-chip-dismiss { background: #f1f5f9; color: #64748b; }
-      .jmai-chip-dismiss:hover { background: #fecaca; color: #dc2626; }
-      .jmai-chip.jmai-fade-out {
-        opacity: 0;
-        transform: scale(0.88) translateY(-4px);
-        pointer-events: none;
-      }
-      .jmai-chip-bar {
-        position: fixed;
-        bottom: 0; left: 0; right: 0;
-        z-index: 2147483641;
-        background: #3b82f6;
-        color: #fff;
-        padding: 10px 20px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 13px;
-        box-shadow: 0 -3px 20px rgba(59,130,246,0.3);
-      }
-      .jmai-bar-logo { font-size: 16px; }
-      .jmai-bar-text { flex: 1; font-weight: 500; }
-      .jmai-bar-apply {
-        background: #fff;
-        color: #3b82f6;
-        border: none;
-        border-radius: 7px;
-        padding: 6px 18px;
-        font-size: 13px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: background 0.15s;
-      }
-      .jmai-bar-apply:hover { background: #eff6ff; }
-      .jmai-bar-dismiss {
-        background: rgba(255,255,255,0.18);
-        color: #fff;
-        border: 1.5px solid rgba(255,255,255,0.4);
-        border-radius: 7px;
-        padding: 6px 14px;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      .jmai-bar-dismiss:hover { background: rgba(255,255,255,0.28); }
-      .jmai-field-ring {
-        outline: 2.5px solid #3b82f6 !important;
-        outline-offset: 2px !important;
-      }
-      .jmai-badge {
-        position: fixed;
-        z-index: 2147483639;
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        padding: 1px 6px 1px 4px;
-        background: #ecfdf5;
-        border: 1px solid #10b981;
-        border-radius: 20px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 9px;
-        font-weight: 500;
-        color: #065f46;
-        pointer-events: auto;
-        user-select: none;
-        white-space: nowrap;
-        box-shadow: 0 1px 3px rgba(16,185,129,0.12);
-        opacity: 1;
-        transition: opacity 0.5s ease;
-      }
-      .jmai-badge.jmai-fading { opacity: 0; }
-      .jmai-badge svg {
-        width: 10px;
-        height: 10px;
-        flex-shrink: 0;
-      }
-      .jmai-badge-close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 12px;
-        height: 12px;
-        margin-left: 2px;
-        border: none;
-        background: none;
-        color: #065f46;
-        font-size: 11px;
-        line-height: 1;
-        cursor: pointer;
-        border-radius: 50%;
-        padding: 0;
-        opacity: 0.5;
-        transition: opacity 0.15s;
-      }
-      .jmai-badge-close:hover {
-        opacity: 1;
-        background: rgba(6,95,70,0.1);
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  /**
-   * Shows a small fixed-position "✦ Autofilled by JobMatch AI" pill anchored to
-   * the bottom-right corner of the filled field. Uses position:fixed so it never
-   * pushes other elements down or disrupts the page layout.
-   * @param {Element} el - The filled form element (input, select, radio, etc.).
-   */
-  function showAutofillBadge(el) {
-    if (!el) return;
-    injectChipStyles();
-
-    const badge = document.createElement('div');
-    badge.className = 'jmai-badge';
-    badge.innerHTML = `<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 1l1 3h3l-2.5 1.8.95 3L6 7.2 3.55 8.8l.95-3L2 4h3L6 1z" fill="#10b981"/>
-    </svg>Autofilled by JobMatch AI<button class="jmai-badge-close" title="Dismiss">&times;</button>`;
-    document.body.appendChild(badge);
-
-    // Close button removes this badge
-    badge.querySelector('.jmai-badge-close').addEventListener('click', () => {
-      badge.remove();
-      const idx = _badges.findIndex(b => b.badgeEl === badge);
-      if (idx !== -1) _badges.splice(idx, 1);
-    });
-
-    // Position badge to the right of the field, vertically centered
-    function place() {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return;
-      const badgeH = badge.offsetHeight || 16;
-      badge.style.top  = Math.round(r.top + (r.height - badgeH) / 2) + 'px';
-      badge.style.left = Math.round(r.right + 4) + 'px';
-    }
-    place();
-
-    _badges.push({ badgeEl: badge, fieldEl: el, place });
-
-    // Reposition on scroll/resize using shared listeners (set up once)
-    if (_badges.length === 1) {
-      _badgeScrollHandler = () => _badges.forEach(b => b.place());
-      window.addEventListener('scroll', _badgeScrollHandler, { passive: true, capture: true });
-      _badgeResizeObs = new ResizeObserver(() => _badges.forEach(b => b.place()));
-      _badgeResizeObs.observe(document.body);
-    }
-
-    // Auto-fade after 8 seconds, remove after fade
-    setTimeout(() => {
-      badge.classList.add('jmai-fading');
-      setTimeout(() => {
-        badge.remove();
-        const idx = _badges.findIndex(b => b.badgeEl === badge);
-        if (idx !== -1) _badges.splice(idx, 1);
-      }, 500);
-    }, 8000);
-  }
-
-  /** Removes all autofill badges and their scroll/resize listeners. */
-  function clearAutofillBadges() {
-    _badges.forEach(({ badgeEl }) => badgeEl.remove());
-    _badges = [];
-    if (_badgeScrollHandler) {
-      window.removeEventListener('scroll', _badgeScrollHandler, { capture: true });
-      _badgeScrollHandler = null;
-    }
-    if (_badgeResizeObs) { _badgeResizeObs.disconnect(); _badgeResizeObs = null; }
-  }
-
-  /**
-   * Main entry point: creates a chip for every AI answer that has a value,
-   * positions each chip near its form field, and shows the sticky bottom bar.
-   * @param {Array<Object>} answers - AI answer objects from GENERATE_AUTOFILL.
-   */
-  function showInlineChips(answers) {
-    clearAllChips();
-    injectChipStyles();
-
-    if (!Array.isArray(answers)) answers = answers ? [answers] : [];
-
-    let count = 0;
-
-    answers.forEach(ans => {
-      const val   = (ans.answer_value || ans.answer || '').trim();
-      const qid   = ans.question_id;
-      const ref   = _fieldMap[qid];
-      if (!ref) return;
-
-      // Resolve the DOM element to anchor the chip to
-      const fieldEl = ref.type === 'radio'
-        ? ref.options?.[0]?.el     // first radio button in the group
-        : ref.el;
-      if (!fieldEl) return;
-
-      const needsInput = !val || val === 'NEEDS_USER_INPUT' || val === 'SKIP';
-
-      // Highlight the field so the user can see it's detected
-      fieldEl.classList.add('jmai-field-ring');
-
-      // ── Build the chip ──────────────────────────────────────────
-      const chip = document.createElement('div');
-      chip.className = 'jmai-chip' + (needsInput ? ' jmai-needs-input' : '');
-      chip.dataset.qid = qid;
-
-      // Icon
-      const icon = document.createElement('span');
-      icon.className = 'jmai-chip-icon';
-      icon.textContent = needsInput ? '?' : '★';
-
-      // Editable answer text
-      const ansEl = document.createElement('span');
-      ansEl.className = 'jmai-chip-answer';
-      ansEl.contentEditable = 'true';
-      ansEl.spellcheck = false;
-      if (needsInput) {
-        ansEl.setAttribute('data-empty', '');
-        ansEl.setAttribute('data-placeholder', 'Enter your answer…');
-        ansEl.title = `${ans.question_text || 'Field'} — enter your answer`;
-      } else {
-        ansEl.textContent = val;
-        ansEl.title = `${ans.question_text || 'Field'}: ${val} — click to edit`;
-      }
-      // Remove empty-placeholder attribute once user starts typing
-      ansEl.addEventListener('input', () => {
-        if (ansEl.textContent.trim()) ansEl.removeAttribute('data-empty');
-        else ansEl.setAttribute('data-empty', '');
-      });
-
-      // ✓ Accept button
-      const acceptBtn = document.createElement('button');
-      acceptBtn.className = 'jmai-chip-accept';
-      acceptBtn.textContent = '✓';
-      acceptBtn.title = 'Apply this answer';
-
-      // ✗ Dismiss button
-      const dismissBtn = document.createElement('button');
-      dismissBtn.className = 'jmai-chip-dismiss';
-      dismissBtn.textContent = '✕';
-      dismissBtn.title = 'Skip this field';
-
-      chip.appendChild(icon);
-      chip.appendChild(ansEl);
-      chip.appendChild(acceptBtn);
-      chip.appendChild(dismissBtn);
-      document.body.appendChild(chip);
-
-      const chipData = { chipEl: chip, fieldEl, ans, ansEl };
-      _chips.set(qid, chipData);
-      positionChip(chip, fieldEl);
-      count++;
-
-      // ── Accept handler ──────────────────────────────────────────
-      acceptBtn.addEventListener('click', async () => {
-        const currentVal = ansEl.textContent.trim();
-        if (!currentVal) { ansEl.focus(); return; } // force user to type something for empty fields
-        ans.answer_value = currentVal;
-        ans.answer       = currentVal;
-        await fillSingleField(ans);
-        removeChip(qid);
-      });
-
-      // ── Dismiss handler ─────────────────────────────────────────
-      dismissBtn.addEventListener('click', () => removeChip(qid));
-    });
-
-    if (count === 0) {
-      setStatus('No fillable fields detected on this page.', 'info');
-      setTimeout(clearStatus, 2500);
-      return;
-    }
-
-    createChipBar(count);
-
-    // Reposition chips on scroll (page scrolls, field rects change)
-    _chipScrollHandler = repositionAllChips;
-    window.addEventListener('scroll', _chipScrollHandler, { passive: true });
-
-    // Reposition chips if the page layout changes (e.g. accordions opening)
-    if (_chipResizeObs) { _chipResizeObs.disconnect(); _chipResizeObs = null; }
-    _chipResizeObs = new ResizeObserver(repositionAllChips);
-    _chipResizeObs.observe(document.documentElement);
-  }
-
-  /**
-   * Positions a chip above the field if space allows, otherwise below.
-   * Uses position:fixed with getBoundingClientRect() so it tracks the viewport.
-   * @param {HTMLElement} chipEl  - The chip element.
-   * @param {HTMLElement} fieldEl - The form field to anchor to.
-   */
-  function positionChip(chipEl, fieldEl) {
-    const rect = fieldEl.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
-      chipEl.style.display = 'none'; // field not visible — hide chip
-      return;
-    }
-    chipEl.style.display = '';
-
-    // Width: match field width, clamped between 160px and 360px
-    const w = Math.min(360, Math.max(160, rect.width));
-    chipEl.style.width = w + 'px';
-
-    // Horizontal: align left edge with field, clamp to viewport
-    const left = Math.min(Math.max(4, rect.left), window.innerWidth - w - 4);
-    chipEl.style.left = left + 'px';
-
-    // Vertical: prefer above (need ~42px clearance), fall back to below
-    const CHIP_H = 42;
-    if (rect.top >= CHIP_H + 6) {
-      chipEl.style.top = (rect.top - CHIP_H - 4) + 'px';
-    } else {
-      chipEl.style.top = (rect.bottom + 4) + 'px';
-    }
-  }
-
-  /** Repositions all visible chips — called on scroll/resize. */
-  function repositionAllChips() {
-    _chips.forEach(({ chipEl, fieldEl }) => positionChip(chipEl, fieldEl));
-  }
-
-  /**
-   * Removes a single chip with a fade animation, unhighlights its field,
-   * and updates the bottom bar count. Clears everything when the last chip goes.
-   * @param {string} qid - The question_id of the chip to remove.
-   */
-  function removeChip(qid) {
-    const data = _chips.get(qid);
-    if (!data) return;
-    const { chipEl, fieldEl } = data;
-    fieldEl.classList.remove('jmai-field-ring');
-    chipEl.classList.add('jmai-fade-out');
-    setTimeout(() => { chipEl.remove(); }, 200);
-    _chips.delete(qid);
-    if (_chips.size === 0) {
-      clearAllChips();
-      // Reset the AutoFill button
-      const btn = shadowRoot && shadowRoot.getElementById('jmAutofill');
-      if (btn) { btn.innerHTML = 'AutoFill Application'; btn.onclick = null; }
-    } else {
-      updateChipBar();
-    }
-  }
-
-  /**
-   * Creates the sticky bottom bar with Apply All / Dismiss All controls.
-   * @param {number} count - Initial suggestion count for the label.
-   */
-  function createChipBar(count) {
-    if (_chipBar) _chipBar.remove();
-    const bar = document.createElement('div');
-    bar.className = 'jmai-chip-bar';
-    bar.innerHTML = `
-      <span class="jmai-bar-logo">★</span>
-      <span class="jmai-bar-text">${count} suggestion${count === 1 ? '' : 's'} ready</span>
-      <button class="jmai-bar-apply">Apply All</button>
-      <button class="jmai-bar-dismiss">Dismiss All</button>
-    `;
-    document.body.appendChild(bar);
-    _chipBar = bar;
-    bar.querySelector('.jmai-bar-apply').addEventListener('click', applyAllChips);
-    bar.querySelector('.jmai-bar-dismiss').addEventListener('click', clearAllChips);
-  }
-
-  /** Updates the suggestion count label in the bottom bar. */
-  function updateChipBar() {
-    if (!_chipBar) return;
-    const n = _chips.size;
-    const label = _chipBar.querySelector('.jmai-bar-text');
-    if (label) label.textContent = `${n} suggestion${n === 1 ? '' : 's'} remaining`;
-  }
-
-  /**
-   * Applies all remaining chip answers to their respective form fields, then cleans up.
-   * Skips any chip whose answer text is empty.
-   * @async
-   */
-  async function applyAllChips() {
-    const entries = Array.from(_chips.values());
-    let filled = 0;
-    for (const { ans, ansEl, fieldEl } of entries) {
-      const currentVal = ansEl.textContent.trim();
-      if (!currentVal || currentVal === 'NEEDS_USER_INPUT') continue;
-      ans.answer_value = currentVal;
-      ans.answer       = currentVal;
-      await fillSingleField(ans);
-      fieldEl.classList.remove('jmai-field-ring');
-      filled++;
-    }
-    // Show brief success message in the bar before clearing
-    if (_chipBar) {
-      const label = _chipBar.querySelector('.jmai-bar-text');
-      if (label) label.textContent = `✓ ${filled} field${filled === 1 ? '' : 's'} filled!`;
-    }
-    // Show review warning in the panel
-    if (shadowRoot) {
-      const warning = shadowRoot.getElementById('jmAutofillWarning');
-      if (warning) warning.style.display = 'flex';
-    }
-    setTimeout(() => {
-      clearAllChips();
-      _fieldMap = {};
-      const btn = shadowRoot && shadowRoot.getElementById('jmAutofill');
-      if (btn) { btn.innerHTML = 'AutoFill Application'; btn.onclick = null; }
-    }, 700);
-  }
-
-  /**
-   * Removes all chips, the bottom bar, field highlights, and event listeners.
-   * Safe to call even when no chips are active.
-   */
-  function clearAllChips() {
-    _chips.forEach(({ chipEl, fieldEl }) => {
-      fieldEl.classList.remove('jmai-field-ring');
-      chipEl.remove();
-    });
-    _chips.clear();
-    if (_chipBar)          { _chipBar.remove();                _chipBar = null; }
-    if (_chipScrollHandler){ window.removeEventListener('scroll', _chipScrollHandler); _chipScrollHandler = null; }
-    if (_chipResizeObs)    { _chipResizeObs.disconnect();      _chipResizeObs = null; }
-  }
-
-  /**
-   * Fills a single form field from one AI answer object.
-   * Routes to the correct fill function based on the field type in _fieldMap.
-   * @async
-   * @param {Object} ans - Answer object with question_id and answer_value.
-   */
-  async function fillSingleField(ans) {
-    const ref = _fieldMap[ans.question_id];
-    if (!ref) return;
-    const val = (ans.answer_value || ans.answer || '').trim();
-    if (!val) return;
-    try {
-      if (ref.type === 'dropdown') {
-        const questionText = ref.questionText || ans.question_text || '';
-        if (questionText && ref.optionTexts?.length) {
-          const best = await sendMessage({ type: 'MATCH_DROPDOWN', questionText, options: ref.optionTexts });
-          if (best && best !== 'SKIP' && best !== 'NEEDS_USER_INPUT') {
-            fillSelectByText(ref.el, best, ref.optionMap, ref.optionTexts);
-            return;
-          }
-        }
-        fillSelectByText(ref.el, val, ref.optionMap, ref.optionTexts);
-      } else if (ref.type === 'custom_dropdown') {
-        await fillCustomDropdown(ref.el, ref.questionText || val);
-      } else if (ref.type === 'radio') {
-        fillRadioFromRef(ref.options, val);
-      } else if (ref.type === 'checkbox') {
-        fillCheckboxFromRef(ref.el, val);
-      } else {
-        fillInput(ref.el, val);
-      }
-    } catch (_) { /* ignore individual fill errors — don't block other fields */ }
-  }
-
   // ─── Form field detection ─────────────────────────────────────
   // Scans the live DOM for all fillable form fields and builds two data structures:
   //   questions[] — serialisable descriptors sent to the AI (label, type, options)
@@ -3651,25 +2970,6 @@
     }));
   }
 
-  /**
-  /**
-   * Post-fill verification: finds all dropdowns on the page, reads their
-   * label and options, matches against Q&A answers, and selects the correct one.
-   * No synonym groups — directly matches Q&A answer text to dropdown options.
-   * Handles native <select>, React Select, and radio groups.
-   */
-  /**
-   * Post-fill verification stub — disabled for now.
-   * The AI autofill with Q&A hints handles field selection directly.
-   */
-  async function verifyAndCorrectFills() {
-    // Verification removed — was causing incorrect corrections
-    // (opening wrong dropdowns, matching wrong Q&A entries).
-    // The AI prompt now includes Q&A hints per field for direct matching.
-  }
-
-
-
   async function fillFormFromAnswers(answers) {
     // Handle array format (new) or flat object (legacy)
     if (!Array.isArray(answers)) {
@@ -3748,8 +3048,6 @@
         skipped.push(qid);
       }
     }
-    // Run post-fill verification
-    await verifyAndCorrectFills();
 
     return { filled, skipped };
   }
@@ -4836,9 +4134,7 @@
       if (currentUrl === _lastUrl) return;
       _lastUrl = currentUrl;
       currentAnalysis = null;
-      _pendingAnswers = null;
       _fieldMap = {};
-      clearAllChips();
       clearAutofillBadges();
       if (shadowRoot && panelOpen) {
         const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
@@ -4848,7 +4144,7 @@
         [
           'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
           'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
-          'jmAutofillPreview', 'jmAutofillWarning', 'jmCoverLetterSection', 'jmBulletSection',
+          'jmAutofillWarning', 'jmCoverLetterSection', 'jmBulletSection',
           'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
         ].forEach(id => {
           const el = shadowRoot.getElementById(id);

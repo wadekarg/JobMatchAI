@@ -12,6 +12,11 @@
 (function () {
   'use strict';
 
+  // Logs leak Q&A answer content (gender/race/salary/etc) into the page's
+  // DevTools console — never enable in shipped builds.
+  const DEBUG = false;
+  const dbg = (...args) => { if (DEBUG) console.log('[JobMatch AI]', ...args); };
+
   // ─── Label extraction (tries multiple strategies) ───────────────
 
   function getElementLabel(el) {
@@ -246,7 +251,7 @@
     // Store filled labels globally so Pass 2 can skip them
     window.__jobMatchFilledLabels = filledLabels;
 
-    console.log(`[JobMatch AI] Direct fill: scanning page with ${qaList?.length || 0} Q&A entries`);
+    dbg(`Direct fill: scanning page with ${qaList?.length || 0} Q&A entries`);
 
     // ── 1. Native inputs and textareas ──
     const inputs = document.querySelectorAll(
@@ -270,7 +275,7 @@
       if (answer) {
         // Sanity check: don't put long answers in short text inputs
         if (input.type !== 'textarea' && input.tagName !== 'TEXTAREA' && answer.length > 200) continue;
-        console.log(`[JobMatch AI] Direct fill: "${label}" → "${answer.substring(0, 50)}"`);
+        dbg(`Direct fill: "${label}" (${answer.length} chars)`);
         setNativeInputValue(input, answer);
         filledIds.add(input.id || input.name);
         filledLabels.add(label);
@@ -292,7 +297,7 @@
       if (best) {
         const opt = Array.from(sel.options).find(o => o.text.trim() === best);
         if (opt) {
-          console.log(`[JobMatch AI] Direct fill <select>: "${label}" → "${best}"`);
+          dbg(`Direct fill <select>: "${label}" matched`);
           sel.value = opt.value;
           fireEvents(sel);
           filledIds.add(sel.id || sel.name);
@@ -324,7 +329,7 @@
       if (best) {
         const radio = radioLabels.find(r => r.text === best);
         if (radio) {
-          console.log(`[JobMatch AI] Direct fill radio: "${label}" → "${best}"`);
+          dbg(`Direct fill radio: "${label}" matched`);
           radio.el.checked = true;
           fireEvents(radio.el);
           filledLabels.add(label);
@@ -350,7 +355,7 @@
 
       const shouldCheck = /^(yes|true|1|checked|agree|accept|i am|i do|i have)/i.test(answer);
       if (cb.checked !== shouldCheck) {
-        console.log(`[JobMatch AI] Direct fill checkbox: "${label}" → ${shouldCheck}`);
+        dbg(`Direct fill checkbox: "${label}" matched`);
         cb.checked = shouldCheck;
         fireEvents(cb);
         filledLabels.add(label);
@@ -362,7 +367,7 @@
     // Find all React Select containers by looking for the input[role="combobox"] inside them
     const reactInputs = document.querySelectorAll('input[role="combobox"]');
     const processedContainers = new Set();
-    console.log(`[JobMatch AI] Direct fill: found ${reactInputs.length} React Select inputs`);
+    dbg(`Direct fill: found ${reactInputs.length} React Select inputs`);
 
     for (const input of reactInputs) {
       // Walk up to find the React Select container
@@ -398,7 +403,7 @@
         || input.closest('[class*="select"], [class*="Select"]');
       if (!selectContainer) continue;
 
-      console.log(`[JobMatch AI] Direct fill React Select: "${label}" → "${answer}" (was "${currentText || '(empty)'}")`);
+      dbg(`Direct fill React Select: "${label}" matched (${answer.length} chars)`);
       const success = await fillReactSelect(selectContainer, answer);
       if (success) {
         filledLabels.add(label);
@@ -406,7 +411,7 @@
       }
     }
 
-    console.log(`[JobMatch AI] Direct fill complete: ${filled} fields filled`);
+    dbg(`Direct fill complete: ${filled} fields filled`);
     return { filled, filledIds };
   }
 
