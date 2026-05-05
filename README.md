@@ -48,12 +48,14 @@ Results are cached per URL. You get a consistent score every session — click *
 
 ### Smart Auto-Fill
 
-Click **AutoFill Application** and the extension scans every field on the page, sends them to AI along with your resume profile and pre-saved Q&A answers, and prepares answers for every field. A **chip preview bar** appears at the bottom of the page so you can review each answer before anything is filled. Confirm to apply — or edit any answer first.
+Click **AutoFill Application** and the extension scans every field on the page, sends them to the AI along with your resume profile and pre-saved Q&A answers, and prepares an answer for every field.
+
+A **Review before fill** panel then appears in the side panel listing every proposed answer with a checkbox. Uncheck anything you don't want filled, then click **Apply Selected** to commit — or **Cancel** to discard. Nothing is written to the form until you click Apply.
 
 <p align="center">
   <img src="screenshots/autofill-form.png" alt="AutoFill in action on a Greenhouse form — panel showing score and action buttons, form fields completed with teal badges" width="900">
 </p>
-<p align="center"><em>AutoFill in action — form fields completed using your resume and saved Q&A answers. Teal "✦ Autofilled by JobMatch AI" badges mark every filled field.</em></p>
+<p align="center"><em>AutoFill in action — form fields completed using your resume and saved Q&A answers. Teal "✦ Autofilled by JobMatch AI" badges mark every filled field after you confirm.</em></p>
 
 Works with:
 - Standard text inputs and textareas
@@ -61,7 +63,9 @@ Works with:
 - Custom dropdowns built with React, Angular, or plain JS
 - Radio buttons and checkboxes
 
-Always review filled fields before submitting.
+Sensitive fields (CSRF tokens, tracking IDs, reCAPTCHA, framework internals) are filtered out automatically — they're never sent to the AI and never written to.
+
+Always review filled fields one more time before submitting.
 
 ---
 
