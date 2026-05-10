@@ -24,6 +24,13 @@ const noSponsorJDs = [
   'U.S. Citizens only — this position requires an active security clearance.',
   'Must be a US Citizen due to ITAR restrictions.',
   'OPT/CPT not eligible for this role.',
+  // "does not sponsor" / "will not consider" / "not eligible" family
+  'Acme does not sponsor work visas for this position.',
+  'Acme does not currently sponsor employment-based visas.',
+  'We will not consider sponsoring applicants who require work authorization.',
+  'This role is not eligible for visa sponsorship.',
+  'This position is not eligible for sponsorship of any kind.',
+  'Candidates must have authorization to work in the U.S. without sponsorship now or in the future.',
 ];
 
 const sponsorJDs = [
@@ -32,6 +39,12 @@ const sponsorJDs = [
   'Visa sponsorship available for qualified applicants.',
   'We will sponsor international candidates.',
   'Open to sponsoring exceptional engineers.',
+  // Capital One verbatim from a real DevOps posting (May 2026)
+  'Capital One will consider sponsoring a new qualified applicant for employment authorization for this position.',
+  'We may consider sponsoring qualified candidates for this role.',
+  'This position is eligible for visa sponsorship.',
+  'We are able to sponsor work visas for highly qualified applicants.',
+  'May provide sponsorship for exceptional candidates.',
 ];
 
 const noSignalJDs = [
@@ -67,6 +80,14 @@ describe('detectVisaSignal — no signal', () => {
 describe('detectVisaSignal — precedence', () => {
   it('negative wins when both signals appear in the same JD', () => {
     const jd = 'We sponsor visas for many roles, but for this position applicants must be authorized to work in the United States without sponsorship.';
+    expect(jsDetect(jd).kind).toBe('no-sponsor');
+  });
+
+  it('"will not consider sponsoring" wins over "consider sponsoring"', () => {
+    // The substring "consider sponsoring" appears inside both phrasings.
+    // Make sure the negative wins on a refusal even though the positive
+    // pattern would also match.
+    const jd = 'We will not consider sponsoring applicants for this role.';
     expect(jsDetect(jd).kind).toBe('no-sponsor');
   });
 
