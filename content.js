@@ -832,38 +832,52 @@
         font-weight: 400;
         opacity: 0.85;
       }
-      /* Tabs row when there are multiple matched entities (Capital One NA
-         + Capital One Services LLC, etc.). Each tab shows the trimmed
-         display name; clicking switches the graph below. The whole chip
-         is still an <a>; tab buttons stopPropagation so a tab click
-         doesn't navigate to USCIS. */
+      /* Numbered tabs — compact 1/2/3/4/5 pills that fit on one line even
+         in the narrow chip. Hover any tab for the full company name +
+         count via the title attribute. The active company name is shown
+         on the row below the tabs, so the tab itself stays small. */
       .jm-h1b-chip .jm-h1b-tabs {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 4px;
         margin-top: 6px;
       }
       .jm-h1b-chip .jm-h1b-tab {
         font: inherit;
         font-size: 11px;
-        font-weight: 500;
-        padding: 3px 8px;
+        font-weight: 600;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         background: #fff;
         border: 1px solid #bfdbfe;
         color: #1e3a8a;
-        border-radius: 999px;
+        border-radius: 50%;
         cursor: pointer;
-        white-space: nowrap;
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        transition: background 0.12s, border-color 0.12s;
+        flex-shrink: 0;
+        transition: background 0.12s, border-color 0.12s, color 0.12s;
       }
       .jm-h1b-chip .jm-h1b-tab:hover { background: #dbeafe; }
       .jm-h1b-chip .jm-h1b-tab.is-active {
         background: #1e40af;
         border-color: #1e40af;
         color: #ffffff;
+      }
+      /* Active company name shown between the tab row and the graph. */
+      .jm-h1b-chip .jm-h1b-active-name {
+        display: block;
+        margin-top: 5px;
+        font-weight: 600;
+        opacity: 0.95;
+        word-break: break-word;
+      }
+      .jm-h1b-chip .jm-h1b-active-name .jm-h1b-active-count {
+        font-weight: 400;
+        opacity: 0.75;
+        margin-left: 4px;
       }
       /* 5-year history mini-graph: one bar per fiscal year, oldest on the
          left, newest on the right. Hover any bar for the FY + count. */
@@ -2207,14 +2221,6 @@
       data = await sendMessage({ type: 'H1B_LOOKUP', company });
     } catch (_) { data = null; }
 
-    // Temporary debug — remove after the multi-tab rendering is verified.
-    try {
-      console.log('[JM-H1B] company=', JSON.stringify(company),
-        ' found=', data && data.found,
-        ' matches=', (data && data.matches && data.matches.length) || 0,
-        ' first=', (data && data.matches && data.matches[0] && data.matches[0].displayName) || (data && data.displayName));
-    } catch (_) {}
-
     if (myGen !== _analyzeGen) return;
     if (!data || !data.found) { chip.style.display = 'none'; return; }
 
@@ -2249,13 +2255,21 @@
     if (total <= 0) { chip.style.display = 'none'; return; }
 
     const dateLine = `H1B sponsor &mdash; data through ${escapeHTML(_h1bLastUpdated || 'n/a')}`;
-    const tabsOrName = _h1bMatches.length > 1
-      ? `<span class="jm-h1b-tabs">${_h1bMatches.map((mm, i) => {
-          const cls = i === _h1bActiveIdx ? ' is-active' : '';
-          const tip = `${mm.displayName} — ${(mm.h1b.total || 0).toLocaleString()} approved`;
-          return `<button type="button" class="jm-h1b-tab${cls}" data-h1b-idx="${i}" title="${escapeHTML(tip)}">${escapeHTML(prettyEntityName(mm.displayName))}</button>`;
-        }).join('')}</span>`
-      : `<span class="jm-h1b-detail">${escapeHTML(prettyEntityName(m.displayName || ''))}</span>`;
+    let tabsOrName;
+    if (_h1bMatches.length > 1) {
+      // Numbered pill tabs + active company name on its own row.
+      const tabs = _h1bMatches.map((mm, i) => {
+        const cls = i === _h1bActiveIdx ? ' is-active' : '';
+        const tip = `${prettyEntityName(mm.displayName)} — ${(mm.h1b.total || 0).toLocaleString()} approved`;
+        return `<button type="button" class="jm-h1b-tab${cls}" data-h1b-idx="${i}" title="${escapeHTML(tip)}">${i + 1}</button>`;
+      }).join('');
+      const activeName  = prettyEntityName(m.displayName || '');
+      const activeCount = (m.h1b && m.h1b.total) ? `<span class="jm-h1b-active-count">&middot; ${(m.h1b.total).toLocaleString()} approved</span>` : '';
+      tabsOrName = `<span class="jm-h1b-tabs">${tabs}</span>
+        <span class="jm-h1b-active-name">${escapeHTML(activeName)}${activeCount}</span>`;
+    } else {
+      tabsOrName = `<span class="jm-h1b-detail">${escapeHTML(prettyEntityName(m.displayName || ''))}</span>`;
+    }
 
     chip.innerHTML = `
       <span class="jm-h1b-icon">&#127760;</span>
