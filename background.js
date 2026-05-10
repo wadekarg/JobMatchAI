@@ -447,7 +447,11 @@ const H1B_ENDPOINT       = 'https://jobmatchai-h1b.wadekargajanan.workers.dev/lo
 // from older shapes become orphaned and are ignored on the next read.
 //   v1 — single-employer response: { displayName, h1b, perm, lastUpdated }
 //   v2 — multi-match response:     adds matches[] for sibling entities
-const H1B_CACHE_KEY      = 'jm_h1bCache_v2';
+//   v3 — same shape as v2 but written *only* after the new worker rolled
+//        out, so we know any v3 entry has the matches[] field and can be
+//        trusted. Older v2 entries pre-date the worker change and held
+//        single-match data with no matches field.
+const H1B_CACHE_KEY      = 'jm_h1bCache_v3';
 const H1B_FETCH_TIMEOUT  = 6000; // ms — chip is opportunistic, no point waiting
 
 async function readH1bCache(key) {
@@ -456,6 +460,10 @@ async function readH1bCache(key) {
     const cache  = result[H1B_CACHE_KEY] || {};
     const entry  = cache[key];
     if (isExpired(entry, Date.now(), H1B_CACHE_TTL_MS)) return null;
+    // Shape guard — only trust entries that include the multi-match field.
+    // Anything missing it pre-dates the multi-match worker and has to be
+    // re-fetched even if its TTL says fresh.
+    if (entry.found && !Array.isArray(entry.matches)) return null;
     return entry;
   } catch (_) {
     return null;
