@@ -2207,6 +2207,14 @@
       data = await sendMessage({ type: 'H1B_LOOKUP', company });
     } catch (_) { data = null; }
 
+    // Temporary debug — remove after the multi-tab rendering is verified.
+    try {
+      console.log('[JM-H1B] company=', JSON.stringify(company),
+        ' found=', data && data.found,
+        ' matches=', (data && data.matches && data.matches.length) || 0,
+        ' first=', (data && data.matches && data.matches[0] && data.matches[0].displayName) || (data && data.displayName));
+    } catch (_) {}
+
     if (myGen !== _analyzeGen) return;
     if (!data || !data.found) { chip.style.display = 'none'; return; }
 
