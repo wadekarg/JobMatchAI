@@ -70,6 +70,12 @@
   // and bail instead of caching/rendering against the wrong URL (I3).
   let _analyzeGen = 0;
 
+  // H1B chip state — populated by scanH1bSignal, consumed by renderH1bChip
+  // and the tab click handler. Reset on SPA navigation alongside _fieldMap.
+  let _h1bMatches      = null;   // [{ key, displayName, h1b: { history, total } }, ...]
+  let _h1bActiveIdx    = 0;
+  let _h1bLastUpdated  = '';
+
   // AutoFill state
   let _fieldMap        = {};   // Map of question_id → { el, type, ... } built during field detection
   // Preview-gate state (C5). Set when the AI returns proposed answers and
@@ -819,12 +825,45 @@
       }
       .jm-h1b-chip:hover { background: #dbeafe; }
       .jm-h1b-chip .jm-h1b-icon { font-size: 14px; flex-shrink: 0; }
-      .jm-h1b-chip .jm-h1b-text { flex: 1; }
+      .jm-h1b-chip .jm-h1b-text { flex: 1; min-width: 0; }
       .jm-h1b-chip .jm-h1b-detail {
         display: block;
         margin-top: 3px;
         font-weight: 400;
         opacity: 0.85;
+      }
+      /* Tabs row when there are multiple matched entities (Capital One NA
+         + Capital One Services LLC, etc.). Each tab shows the trimmed
+         display name; clicking switches the graph below. The whole chip
+         is still an <a>; tab buttons stopPropagation so a tab click
+         doesn't navigate to USCIS. */
+      .jm-h1b-chip .jm-h1b-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .jm-h1b-chip .jm-h1b-tab {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 3px 8px;
+        background: #fff;
+        border: 1px solid #bfdbfe;
+        color: #1e3a8a;
+        border-radius: 999px;
+        cursor: pointer;
+        white-space: nowrap;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: background 0.12s, border-color 0.12s;
+      }
+      .jm-h1b-chip .jm-h1b-tab:hover { background: #dbeafe; }
+      .jm-h1b-chip .jm-h1b-tab.is-active {
+        background: #1e40af;
+        border-color: #1e40af;
+        color: #ffffff;
       }
       /* 5-year history mini-graph: one bar per fiscal year, oldest on the
          left, newest on the right. Hover any bar for the FY + count. */
@@ -1595,6 +1634,20 @@
     // Autofill preview gate (C5)
     panel.querySelector('#jmApplyFill').addEventListener('click', applyAutofill);
     panel.querySelector('#jmCancelFill').addEventListener('click', cancelAutofill);
+    // H1B chip tab clicks: switch active tab without navigating to USCIS.
+    // The chip itself is an <a> so unhandled clicks still navigate; tab
+    // buttons stop the event so only the graph below changes.
+    panel.querySelector('#jmH1bChip').addEventListener('click', (e) => {
+      const tab = e.target.closest && e.target.closest('.jm-h1b-tab');
+      if (!tab) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(tab.dataset.h1bIdx, 10);
+      if (!isNaN(idx) && _h1bMatches && _h1bMatches[idx]) {
+        _h1bActiveIdx = idx;
+        renderH1bChip();
+      }
+    });
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
       const text = shadowRoot.getElementById('jmCoverLetterText').textContent;
       navigator.clipboard.writeText(text).then(() => {
@@ -2154,47 +2207,91 @@
       data = await sendMessage({ type: 'H1B_LOOKUP', company });
     } catch (_) { data = null; }
 
-    // Bail if the panel moved on (SPA nav, panel closed) while the lookup
-    // was in flight — don't render against the wrong company.
     if (myGen !== _analyzeGen) return;
     if (!data || !data.found) { chip.style.display = 'none'; return; }
 
-    const total  = (data.h1b && data.h1b.total)   || 0;
-    const recent = (data.h1b && data.h1b.history) || [];
-    if (total <= 0)            { chip.style.display = 'none'; return; }
+    // Prefer the new `matches` array. Fall back to constructing a
+    // single-element array from the legacy top-level fields if a stale
+    // cache layer ever returns the old shape (no current path does, but
+    // it's a one-line safety net).
+    const matches = Array.isArray(data.matches) && data.matches.length > 0
+      ? data.matches
+      : (data.h1b ? [{ key: '_legacy', displayName: data.displayName || '', h1b: data.h1b }] : []);
+    if (matches.length === 0)  { chip.style.display = 'none'; return; }
 
-    const latest    = recent[0]; // history is FY-DESC; first is most recent
-    const latestStr = latest && latest.approved > 0
-      ? ` &middot; ${latest.approved.toLocaleString()} in FY${latest.fy}`
-      : '';
+    _h1bMatches      = matches;
+    _h1bActiveIdx    = 0;
+    _h1bLastUpdated  = data.lastUpdated || '';
+    renderH1bChip();
+  }
 
-    // Render a 5-year mini-graph. Reverse the history so oldest is on the
-    // left, newest on the right (conventional reading order). Each bar's
-    // height is (n / max) of the chip's graph row; near-zero bars get a
-    // muted color so the user can still see they exist on hover.
-    const oldestFirst = recent.slice().reverse();
-    const max = oldestFirst.reduce((m, r) => Math.max(m, r.approved || 0), 0);
-    const graphHtml = oldestFirst.length === 0 || max === 0
-      ? ''
-      : `<span class="jm-h1b-graph">${oldestFirst.map(r => {
-          const pct  = max > 0 ? Math.max(8, Math.round(((r.approved || 0) / max) * 100)) : 0;
-          const cls  = (r.approved || 0) === 0 ? ' jm-h1b-bar-empty' : '';
-          const ttl  = `FY${r.fy}: ${(r.approved || 0).toLocaleString()} approved`;
-          return `<span class="jm-h1b-bar${cls}" style="height:${pct}%" title="${escapeHTML(ttl)}"></span>`;
-        }).join('')}</span>
-        <span class="jm-h1b-axis">
-          <span>FY${oldestFirst[0].fy}</span>
-          <span>FY${oldestFirst[oldestFirst.length - 1].fy}</span>
-        </span>`;
+  /**
+   * (Re-)render the H1B chip from current module state. Called by
+   * scanH1bSignal on first load and by the tab click handler when the user
+   * switches between matches.
+   */
+  function renderH1bChip() {
+    const chip = shadowRoot && shadowRoot.getElementById('jmH1bChip');
+    if (!chip || !_h1bMatches || _h1bMatches.length === 0) {
+      if (chip) chip.style.display = 'none';
+      return;
+    }
+    const m     = _h1bMatches[_h1bActiveIdx] || _h1bMatches[0];
+    const total = (m.h1b && m.h1b.total) || 0;
+    if (total <= 0) { chip.style.display = 'none'; return; }
+
+    const dateLine = `H1B sponsor &mdash; data through ${escapeHTML(_h1bLastUpdated || 'n/a')}`;
+    const tabsOrName = _h1bMatches.length > 1
+      ? `<span class="jm-h1b-tabs">${_h1bMatches.map((mm, i) => {
+          const cls = i === _h1bActiveIdx ? ' is-active' : '';
+          const tip = `${mm.displayName} — ${(mm.h1b.total || 0).toLocaleString()} approved`;
+          return `<button type="button" class="jm-h1b-tab${cls}" data-h1b-idx="${i}" title="${escapeHTML(tip)}">${escapeHTML(prettyEntityName(mm.displayName))}</button>`;
+        }).join('')}</span>`
+      : `<span class="jm-h1b-detail">${escapeHTML(prettyEntityName(m.displayName || ''))}</span>`;
 
     chip.innerHTML = `
       <span class="jm-h1b-icon">&#127760;</span>
-      <span class="jm-h1b-text">H1B sponsor &mdash; ${total.toLocaleString()} approved${latestStr}
-        <span class="jm-h1b-detail">${escapeHTML(data.displayName || '')} &middot; data through ${escapeHTML(data.lastUpdated || 'n/a')}</span>
-        ${graphHtml}
+      <span class="jm-h1b-text">${dateLine}
+        ${tabsOrName}
+        ${renderH1bGraph(m.h1b.history || [])}
       </span>`;
-    chip.title = 'Click to view full H1B history on the USCIS Employer Data Hub.';
+    chip.title = 'Click bars or this chip to view the full H1B history on the USCIS Employer Data Hub.';
     chip.style.display = 'flex';
+  }
+
+  /** Reverse-sorted history → bar markup. Returns '' when history is empty. */
+  function renderH1bGraph(history) {
+    if (!Array.isArray(history) || history.length === 0) return '';
+    const oldestFirst = history.slice().reverse();
+    const max = oldestFirst.reduce((m, r) => Math.max(m, r.approved || 0), 0);
+    if (max === 0) return '';
+    const bars = oldestFirst.map(r => {
+      const pct = Math.max(8, Math.round(((r.approved || 0) / max) * 100));
+      const cls = (r.approved || 0) === 0 ? ' jm-h1b-bar-empty' : '';
+      const ttl = `FY${r.fy}: ${(r.approved || 0).toLocaleString()} approved`;
+      return `<span class="jm-h1b-bar${cls}" style="height:${pct}%" title="${escapeHTML(ttl)}"></span>`;
+    }).join('');
+    return `
+      <span class="jm-h1b-graph">${bars}</span>
+      <span class="jm-h1b-axis">
+        <span>FY${oldestFirst[0].fy}</span>
+        <span>FY${oldestFirst[oldestFirst.length - 1].fy}</span>
+      </span>`;
+  }
+
+  /**
+   * Title-case all-caps USCIS names ("CAPITAL ONE SERVICES LLC" →
+   * "Capital One Services LLC") and truncate very long names so tab
+   * labels stay readable. Names that already have mixed case pass
+   * through untouched.
+   */
+  function prettyEntityName(name) {
+    let s = String(name || '').replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    if (s === s.toUpperCase()) {
+      s = s.replace(/[A-Za-z][A-Za-z]*/g, w => w.charAt(0) + w.slice(1).toLowerCase());
+    }
+    return s.length > 36 ? s.slice(0, 34) + '…' : s;
   }
 
   /**
@@ -4566,6 +4663,11 @@
     // Discard any pending autofill preview from the previous page (C5).
     _pendingAnswers   = null;
     _pendingQuestions = null;
+    // Discard the previous job's H1B match set so a stale graph never
+    // flashes on the new job before scanH1bSignal completes.
+    _h1bMatches     = null;
+    _h1bActiveIdx   = 0;
+    _h1bLastUpdated = '';
     clearAutofillBadges();
     if (shadowRoot && panelOpen) {
       const analyzeBtn = shadowRoot.getElementById('jmAnalyze');
