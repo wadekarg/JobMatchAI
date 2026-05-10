@@ -451,7 +451,10 @@ const H1B_ENDPOINT       = 'https://jobmatchai-h1b.wadekargajanan.workers.dev/lo
 //        out, so we know any v3 entry has the matches[] field and can be
 //        trusted. Older v2 entries pre-date the worker change and held
 //        single-match data with no matches field.
-const H1B_CACHE_KEY      = 'jm_h1bCache_v3';
+//   v4 — bumped after the D1 dataset was rebuilt from the USCIS Tableau
+//        crosstab xlsx (FY2021-FY2026, all 6 approval categories summed
+//        per employer instead of just Initial + Continuing).
+const H1B_CACHE_KEY      = 'jm_h1bCache_v4';
 const H1B_FETCH_TIMEOUT  = 6000; // ms — chip is opportunistic, no point waiting
 
 async function readH1bCache(key) {
