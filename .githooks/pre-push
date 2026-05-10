@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# pre-push hook: warn if the H1B dataset (in the sibling
+# jobmatchai-h1b-data repo) is older than 90 days.
+#
+# The H1B chip pulls live from the Cloudflare Worker; if the upstream
+# data is stale, every user's chip is stale too. Pushing extension
+# changes won't fix that — only `make refresh` in the data repo will.
+#
+# Override with `git push --no-verify` if the chip isn't part of this
+# change (e.g. you're only fixing unrelated UI).
+
+set -e
+
+DATA_REPO_CANDIDATES=(
+  "$(git rev-parse --show-toplevel)/../jobmatchai-h1b-data"
+  "$HOME/hdd/Projects/jobmatchai-h1b-data"
+  "$HOME/Projects/jobmatchai-h1b-data"
+)
+STAMP=""
+for d in "${DATA_REPO_CANDIDATES[@]}"; do
+  if [ -f "$d/last-updated.json" ]; then
+    STAMP="$d/last-updated.json"
+    break
+  fi
+done
+
+if [ -z "$STAMP" ]; then
+  exit 0   # data repo not cloned alongside this one — nothing we can check
+fi
+
+LAST=$(python3 -c "
+import json
+try:
+    print(json.load(open('$STAMP')).get('last_updated') or '')
+except Exception:
+    print('')
+")
+if [ -z "$LAST" ] || [ "$LAST" = "None" ]; then
+  exit 0
+fi
+
+AGE=$(python3 -c "
+import datetime
+last  = datetime.date.fromisoformat('$LAST')
+today = datetime.date.today()
+print((today - last).days)
+")
+THRESHOLD=90
+
+if [ "$AGE" -gt "$THRESHOLD" ]; then
+  echo
+  echo "  ⚠ H1B data (in $(dirname "$STAMP")) is ${AGE} days old."
+  echo "    Last refresh: ${LAST}. USCIS updates quarterly — refresh first:"
+  echo "      cd $(dirname "$STAMP") && make refresh"
+  echo
+  if [ -t 1 ] && [ -r /dev/tty ]; then
+    printf "  Push the extension anyway? [y/N] "
+    read -r answer </dev/tty
+    case "$answer" in
+      y|Y|yes|YES) echo "  → pushing anyway"; exit 0 ;;
+      *)           echo "  → aborted. Refresh the data first, or 'git push --no-verify' to override."; exit 1 ;;
+    esac
+  fi
+fi
+
+exit 0
