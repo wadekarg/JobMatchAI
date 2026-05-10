@@ -50,6 +50,12 @@
   // can't trick us into writing into them.
   const isFieldEligible = (globalThis.JMFieldFilter && globalThis.JMFieldFilter.isFieldEligible) || (() => true);
 
+  // JD visa-phrase detector. Lets the panel warn the user about
+  // "no sponsorship" / "U.S. citizens only" postings before they spend an
+  // Analyze call. Defensive fallback so missing-helper never breaks the panel.
+  const detectVisaSignal = (globalThis.JMVisaPhrases && globalThis.JMVisaPhrases.detectVisaSignal)
+    || (() => ({ kind: 'unknown', match: null }));
+
   // ─── State ──────────────────────────────────────────────────────
   // Module-level variables shared across functions within this IIFE.
 
@@ -759,6 +765,39 @@
         display: none;
       }
 
+      /* Visa-phrase signal chip (above the action buttons). Two visual
+         states driven by .jm-visa-chip-* modifier classes. */
+      .jm-visa-chip {
+        margin: 0 0 12px 0;
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.4;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .jm-visa-chip-no {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+      }
+      .jm-visa-chip-yes {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+      }
+      .jm-visa-chip .jm-visa-chip-icon { font-size: 14px; flex-shrink: 0; }
+      .jm-visa-chip .jm-visa-chip-text  { flex: 1; }
+      .jm-visa-chip .jm-visa-chip-quote {
+        display: block;
+        margin-top: 3px;
+        font-weight: 400;
+        font-style: italic;
+        opacity: 0.85;
+      }
+
       .jm-job-info .jm-job-title {
         font-weight: 700;
         font-size: 14px;
@@ -1322,6 +1361,10 @@
             <span id="jmJobId" style="display:none">&#128196;&nbsp;ID: <span id="jmJobIdText"></span></span>
           </div>
         </div>
+
+        <!-- Visa-phrase signal chip (filled by scanVisaSignal). Hidden by default;
+             revealed when the JD contains explicit sponsorship language. -->
+        <div class="jm-visa-chip" id="jmVisaChip" style="display:none" title=""></div>
 
         <!-- Resume slot switcher -->
         <div class="jm-resume-switcher" id="jmResumeSwitch">
@@ -1947,6 +1990,7 @@
       checkIfApplied();
       checkIfSaved();
       loadJobNotes();
+      scanVisaSignal(); // pre-analyze warning if JD says "no sponsorship"
       // Ensure we start on the main tab when opening the panel
       deactivateSavedTab();
     } else {
@@ -1983,6 +2027,43 @@
     const el = shadowRoot.getElementById('jmStatus');
     el.className = 'jm-status';
     el.style.display = 'none';
+  }
+
+  /**
+   * Run the visa-phrase detector against the current page's JD and render
+   * a chip above the action buttons. Called when the panel opens and after
+   * SPA navigation. Pure regex/string match — no AI call, no network.
+   * Stays silent if no signal is found.
+   */
+  function scanVisaSignal() {
+    const chip = shadowRoot && shadowRoot.getElementById('jmVisaChip');
+    if (!chip) return;
+    let jd = '';
+    try { jd = extractJobDescription() || ''; } catch (_) { /* extraction can throw on weird pages */ }
+    const sig = detectVisaSignal(jd);
+
+    if (sig.kind === 'no-sponsor') {
+      chip.className = 'jm-visa-chip jm-visa-chip-no';
+      chip.innerHTML = `<span class="jm-visa-chip-icon">&#9888;</span>
+        <span class="jm-visa-chip-text">No sponsorship indicated
+          <span class="jm-visa-chip-quote">JD says: &ldquo;${escapeHTML(sig.match)}&rdquo;</span>
+        </span>`;
+      chip.title = 'This posting appears to exclude visa sponsorship. Click Analyze for the full match if you still want to apply.';
+      chip.style.display = 'flex';
+    } else if (sig.kind === 'sponsor') {
+      chip.className = 'jm-visa-chip jm-visa-chip-yes';
+      chip.innerHTML = `<span class="jm-visa-chip-icon">&#10003;</span>
+        <span class="jm-visa-chip-text">Visa sponsorship offered
+          <span class="jm-visa-chip-quote">JD says: &ldquo;${escapeHTML(sig.match)}&rdquo;</span>
+        </span>`;
+      chip.title = 'This posting explicitly mentions sponsorship.';
+      chip.style.display = 'flex';
+    } else {
+      chip.style.display = 'none';
+      chip.className = 'jm-visa-chip';
+      chip.innerHTML = '';
+      chip.title = '';
+    }
   }
 
   /**
@@ -4364,13 +4445,15 @@
         'jmScoreSection', 'jmMatchingSection', 'jmMissingSection', 'jmRecsSection',
         'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
         'jmAutofillWarning', 'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
-        'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn'
+        'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn',
+        'jmVisaChip'
       ].forEach(id => {
         const el = shadowRoot.getElementById(id);
         if (el) el.style.display = 'none';
       });
       loadJobNotes();
       loadSlotState();
+      scanVisaSignal(); // re-scan the new job's JD
       setStatus('New job detected — click Analyze Job.', 'info');
       setTimeout(clearStatus, 3000);
     }
