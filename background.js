@@ -443,7 +443,11 @@ async function handleDeleteJob(jobId) {
 // or parse error returns null and the chip just doesn't render.
 
 const H1B_ENDPOINT       = 'https://jobmatchai-h1b.wadekargajanan.workers.dev/lookup';
-const H1B_CACHE_KEY      = 'jm_h1bCache';
+// Bump the suffix whenever the cached response shape changes — entries
+// from older shapes become orphaned and are ignored on the next read.
+//   v1 — single-employer response: { displayName, h1b, perm, lastUpdated }
+//   v2 — multi-match response:     adds matches[] for sibling entities
+const H1B_CACHE_KEY      = 'jm_h1bCache_v2';
 const H1B_FETCH_TIMEOUT  = 6000; // ms — chip is opportunistic, no point waiting
 
 async function readH1bCache(key) {
