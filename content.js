@@ -826,6 +826,37 @@
         font-weight: 400;
         opacity: 0.85;
       }
+      /* 5-year history mini-graph: one bar per fiscal year, oldest on the
+         left, newest on the right. Hover any bar for the FY + count. */
+      .jm-h1b-chip .jm-h1b-graph {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 28px;
+        margin-top: 6px;
+      }
+      .jm-h1b-chip .jm-h1b-bar {
+        flex: 1;
+        min-height: 4px;
+        background: #3b82f6;
+        border-radius: 2px 2px 0 0;
+        cursor: help;
+        transition: opacity 0.15s;
+      }
+      .jm-h1b-chip .jm-h1b-bar:hover { opacity: 0.7; }
+      .jm-h1b-chip .jm-h1b-bar.jm-h1b-bar-empty {
+        background: #93c5fd;
+        opacity: 0.5;
+      }
+      /* Tiny FY axis under the bars */
+      .jm-h1b-chip .jm-h1b-axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        font-weight: 400;
+        opacity: 0.7;
+        margin-top: 2px;
+      }
 
       .jm-job-info .jm-job-title {
         font-weight: 700;
@@ -2136,10 +2167,31 @@
     const latestStr = latest && latest.approved > 0
       ? ` &middot; ${latest.approved.toLocaleString()} in FY${latest.fy}`
       : '';
+
+    // Render a 5-year mini-graph. Reverse the history so oldest is on the
+    // left, newest on the right (conventional reading order). Each bar's
+    // height is (n / max) of the chip's graph row; near-zero bars get a
+    // muted color so the user can still see they exist on hover.
+    const oldestFirst = recent.slice().reverse();
+    const max = oldestFirst.reduce((m, r) => Math.max(m, r.approved || 0), 0);
+    const graphHtml = oldestFirst.length === 0 || max === 0
+      ? ''
+      : `<span class="jm-h1b-graph">${oldestFirst.map(r => {
+          const pct  = max > 0 ? Math.max(8, Math.round(((r.approved || 0) / max) * 100)) : 0;
+          const cls  = (r.approved || 0) === 0 ? ' jm-h1b-bar-empty' : '';
+          const ttl  = `FY${r.fy}: ${(r.approved || 0).toLocaleString()} approved`;
+          return `<span class="jm-h1b-bar${cls}" style="height:${pct}%" title="${escapeHTML(ttl)}"></span>`;
+        }).join('')}</span>
+        <span class="jm-h1b-axis">
+          <span>FY${oldestFirst[0].fy}</span>
+          <span>FY${oldestFirst[oldestFirst.length - 1].fy}</span>
+        </span>`;
+
     chip.innerHTML = `
       <span class="jm-h1b-icon">&#127760;</span>
       <span class="jm-h1b-text">H1B sponsor &mdash; ${total.toLocaleString()} approved${latestStr}
         <span class="jm-h1b-detail">${escapeHTML(data.displayName || '')} &middot; data through ${escapeHTML(data.lastUpdated || 'n/a')}</span>
+        ${graphHtml}
       </span>`;
     chip.title = 'Click to view full H1B history on the USCIS Employer Data Hub.';
     chip.style.display = 'flex';
