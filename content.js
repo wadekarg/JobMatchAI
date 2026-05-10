@@ -798,6 +798,35 @@
         opacity: 0.85;
       }
 
+      /* H1B history chip — shown when USCIS has approved petitions for this
+         employer. Click opens the USCIS Employer Data Hub. */
+      .jm-h1b-chip {
+        margin: 0 0 12px 0;
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.4;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1e40af;
+        text-decoration: none;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .jm-h1b-chip:hover { background: #dbeafe; }
+      .jm-h1b-chip .jm-h1b-icon { font-size: 14px; flex-shrink: 0; }
+      .jm-h1b-chip .jm-h1b-text { flex: 1; }
+      .jm-h1b-chip .jm-h1b-detail {
+        display: block;
+        margin-top: 3px;
+        font-weight: 400;
+        opacity: 0.85;
+      }
+
       .jm-job-info .jm-job-title {
         font-weight: 700;
         font-size: 14px;
@@ -1365,6 +1394,11 @@
         <!-- Visa-phrase signal chip (filled by scanVisaSignal). Hidden by default;
              revealed when the JD contains explicit sponsorship language. -->
         <div class="jm-visa-chip" id="jmVisaChip" style="display:none" title=""></div>
+
+        <!-- H1B history chip (filled by scanH1bSignal). Shows only when the
+             public USCIS data has at least one approved petition for this
+             employer. Click opens the USCIS Employer Data Hub. -->
+        <a class="jm-h1b-chip" id="jmH1bChip" href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noopener noreferrer" style="display:none" title=""></a>
 
         <!-- Resume slot switcher -->
         <div class="jm-resume-switcher" id="jmResumeSwitch">
@@ -1991,6 +2025,7 @@
       checkIfSaved();
       loadJobNotes();
       scanVisaSignal(); // pre-analyze warning if JD says "no sponsorship"
+      scanH1bSignal();  // public H1B history chip (fail-soft, no-op if endpoint down)
       // Ensure we start on the main tab when opening the panel
       deactivateSavedTab();
     } else {
@@ -2064,6 +2099,50 @@
       chip.innerHTML = '';
       chip.title = '';
     }
+  }
+
+  /**
+   * Look up the current page's company in the public H1B endpoint and render
+   * the H1B chip. Fail-soft on every error — the chip just doesn't show.
+   * Caching, fetch, and timeout all live in background.js (handleH1bLookup);
+   * this function only handles UI rendering.
+   *
+   * Tied to _analyzeGen so an SPA navigation mid-flight can short-circuit a
+   * stale render. Same pattern as analyzeJob's gen guard.
+   */
+  async function scanH1bSignal() {
+    const chip = shadowRoot && shadowRoot.getElementById('jmH1bChip');
+    if (!chip) return;
+    let company = '';
+    try { company = (extractCompany() || '').trim(); } catch (_) {}
+    if (!company || company.length < 2) { chip.style.display = 'none'; return; }
+
+    const myGen = _analyzeGen;
+    let data;
+    try {
+      data = await sendMessage({ type: 'H1B_LOOKUP', company });
+    } catch (_) { data = null; }
+
+    // Bail if the panel moved on (SPA nav, panel closed) while the lookup
+    // was in flight — don't render against the wrong company.
+    if (myGen !== _analyzeGen) return;
+    if (!data || !data.found) { chip.style.display = 'none'; return; }
+
+    const total  = (data.h1b && data.h1b.total)   || 0;
+    const recent = (data.h1b && data.h1b.history) || [];
+    if (total <= 0)            { chip.style.display = 'none'; return; }
+
+    const latest    = recent[0]; // history is FY-DESC; first is most recent
+    const latestStr = latest && latest.approved > 0
+      ? ` &middot; ${latest.approved.toLocaleString()} in FY${latest.fy}`
+      : '';
+    chip.innerHTML = `
+      <span class="jm-h1b-icon">&#127760;</span>
+      <span class="jm-h1b-text">H1B sponsor &mdash; ${total.toLocaleString()} approved${latestStr}
+        <span class="jm-h1b-detail">${escapeHTML(data.displayName || '')} &middot; data through ${escapeHTML(data.lastUpdated || 'n/a')}</span>
+      </span>`;
+    chip.title = 'Click to view full H1B history on the USCIS Employer Data Hub.';
+    chip.style.display = 'flex';
   }
 
   /**
@@ -4446,7 +4525,7 @@
         'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
         'jmAutofillWarning', 'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
         'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn',
-        'jmVisaChip'
+        'jmVisaChip', 'jmH1bChip'
       ].forEach(id => {
         const el = shadowRoot.getElementById(id);
         if (el) el.style.display = 'none';
@@ -4454,6 +4533,7 @@
       loadJobNotes();
       loadSlotState();
       scanVisaSignal(); // re-scan the new job's JD
+      scanH1bSignal();  // re-fetch H1B history for the new company
       setStatus('New job detected — click Analyze Job.', 'info');
       setTimeout(clearStatus, 3000);
     }

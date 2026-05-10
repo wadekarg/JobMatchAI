@@ -80,6 +80,16 @@ import {
   replaceBulletsInDocXml,
 } from './lib/docxBullets.mjs';
 
+// Pure helpers for the H1B lookup cache (TTL check + LRU eviction). The
+// chrome.storage.local I/O lives below; these stay testable in isolation.
+import {
+  h1bCacheKey,
+  isExpired,
+  evictOldest,
+  H1B_CACHE_TTL_MS,
+  H1B_CACHE_MAX,
+} from './lib/h1bCache.mjs';
+
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 //
@@ -424,6 +434,73 @@ async function handleDeleteJob(jobId) {
 // Applied jobs are a separate list from saved jobs.  They represent postings the
 // user has actually submitted an application for.  The list is capped at 500
 // entries (higher than saved jobs) and deduplicated by URL.
+
+// ─── H1B lookup ──────────────────────────────────────────────────────────────
+// Hits the public JobMatch AI H1B endpoint
+// (https://github.com/wadekarg/jobmatchai-h1b-data) and caches the response in
+// chrome.storage.local under jm_h1bCache. The endpoint logs nothing and the
+// data is U.S. public domain, so no privacy concerns. Fail-soft: any network
+// or parse error returns null and the chip just doesn't render.
+
+const H1B_ENDPOINT       = 'https://jobmatchai-h1b.wadekargajanan.workers.dev/lookup';
+const H1B_CACHE_KEY      = 'jm_h1bCache';
+const H1B_FETCH_TIMEOUT  = 6000; // ms — chip is opportunistic, no point waiting
+
+async function readH1bCache(key) {
+  try {
+    const result = await chrome.storage.local.get(H1B_CACHE_KEY);
+    const cache  = result[H1B_CACHE_KEY] || {};
+    const entry  = cache[key];
+    if (isExpired(entry, Date.now(), H1B_CACHE_TTL_MS)) return null;
+    return entry;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function writeH1bCache(key, payload) {
+  try {
+    const result = await chrome.storage.local.get(H1B_CACHE_KEY);
+    const cache  = result[H1B_CACHE_KEY] || {};
+    cache[key]   = { ...payload, _t: Date.now() };
+    const trimmed = evictOldest(cache, H1B_CACHE_MAX);
+    await chrome.storage.local.set({ [H1B_CACHE_KEY]: trimmed });
+  } catch (_) { /* best-effort cache write; never blocks the lookup */ }
+}
+
+/**
+ * Looks up H1B sponsorship history for `company`. Returns the parsed
+ * endpoint response or `null` on any failure (network down, non-2xx,
+ * malformed JSON). Caller treats null as "no chip".
+ *
+ * @param {string} company - raw employer name as scraped from the page.
+ * @returns {Promise<Object|null>}
+ */
+async function handleH1bLookup(company) {
+  const key = h1bCacheKey(company);
+  if (!key) return null;
+
+  const cached = await readH1bCache(key);
+  if (cached) return cached;
+
+  // Use AbortController to cap the round-trip — chip is opportunistic.
+  const ctl = new AbortController();
+  const t   = setTimeout(() => ctl.abort(), H1B_FETCH_TIMEOUT);
+  try {
+    const url  = `${H1B_ENDPOINT}?company=${encodeURIComponent(company || '')}`;
+    const res  = await fetch(url, { signal: ctl.signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return null;
+    // Fire-and-forget cache write.
+    writeH1bCache(key, data);
+    return data;
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 /**
  * Retrieves the list of jobs the user has marked as applied from local storage.
@@ -871,6 +948,8 @@ const handlers = {
   'GENERATE_AUTOFILL': (msg) => handleGenerateAutofill(msg.formFields),
 
   'MATCH_DROPDOWN': (msg) => handleMatchDropdown(msg.questionText, msg.options),
+
+  'H1B_LOOKUP': (msg) => handleH1bLookup(msg.company),
 
   // ── Storage operations ─────────────────────────────────────────────────
   // Direct reads and writes to chrome.storage.local; no AI calls involved.

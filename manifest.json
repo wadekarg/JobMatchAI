@@ -18,7 +18,8 @@
     "https://openrouter.ai/*",
     "https://api.mistral.ai/*",
     "https://api.deepseek.com/*",
-    "https://api.cohere.com/*"
+    "https://api.cohere.com/*",
+    "https://jobmatchai-h1b.wadekargajanan.workers.dev/*"
   ],
   "background": {
     "service_worker": "background.js",
