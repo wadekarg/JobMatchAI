@@ -499,8 +499,13 @@ async function handleH1bLookup(company) {
   const ctl = new AbortController();
   const t   = setTimeout(() => ctl.abort(), H1B_FETCH_TIMEOUT);
   try {
-    const url  = `${H1B_ENDPOINT}?company=${encodeURIComponent(company || '')}`;
-    const res  = await fetch(url, { signal: ctl.signal });
+    // `&v=` busts any HTTP / Cloudflare-edge cache entries from before the
+    // worker started returning a matches[] array — bump when the response
+    // shape ever changes again. `cache: 'no-store'` also keeps the
+    // browser's per-context HTTP cache out of the loop; chrome.storage
+    // already provides the durable caching layer above us.
+    const url  = `${H1B_ENDPOINT}?company=${encodeURIComponent(company || '')}&v=2`;
+    const res  = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || typeof data !== 'object') return null;
