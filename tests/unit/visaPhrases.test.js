@@ -31,6 +31,16 @@ const noSponsorJDs = [
   'This role is not eligible for visa sponsorship.',
   'This position is not eligible for sponsorship of any kind.',
   'Candidates must have authorization to work in the U.S. without sponsorship now or in the future.',
+
+  // Amazon / Google / defense / variant family
+  'Amazon does not offer visa sponsorship for this role.',
+  'Google does not offer visa sponsorship.',
+  'Acme is not offering visa sponsorship for this position.',
+  'We are currently unable to sponsor candidates for this role.',
+  'We are not able to sponsor work visas at this time.',
+  'Acme is unable to provide sponsorship.',
+  'F-1 OPT not eligible for this role.',
+  'Candidate must have US Person Status to perform work under ITAR.',
 ];
 
 const sponsorJDs = [
@@ -45,6 +55,13 @@ const sponsorJDs = [
   'This position is eligible for visa sponsorship.',
   'We are able to sponsor work visas for highly qualified applicants.',
   'May provide sponsorship for exceptional candidates.',
+
+  // Sponsor variants — "sponsors h1b" / inserted "work" / "sponsorship offered"
+  'Acme sponsors H1B and other employment-based visas.',
+  'We will sponsor H1B for the right candidate.',
+  'We sponsor work visas for international candidates.',
+  'Sponsorship is offered for this position.',
+  'Visa sponsorship offered for qualified applicants.',
 ];
 
 const noSignalJDs = [
@@ -88,6 +105,17 @@ describe('detectVisaSignal — precedence', () => {
     // Make sure the negative wins on a refusal even though the positive
     // pattern would also match.
     const jd = 'We will not consider sponsoring applicants for this role.';
+    expect(jsDetect(jd).kind).toBe('no-sponsor');
+  });
+
+  it('"sponsorship is not offered" wins over "sponsorship is offered"', () => {
+    // Same shape: the positive substring appears inside the negative one.
+    const jd = 'Sorry, sponsorship is not offered for this position.';
+    expect(jsDetect(jd).kind).toBe('no-sponsor');
+  });
+
+  it('"does not offer visa sponsorship" wins over "we offer visa sponsorship"', () => {
+    const jd = 'We do not offer visa sponsorship for this role.';
     expect(jsDetect(jd).kind).toBe('no-sponsor');
   });
 
