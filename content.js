@@ -40,6 +40,18 @@
   if (window.__jobmatchAILoaded) return;
   window.__jobmatchAILoaded = true;
 
+  // Boot diagnostic — temporary, helps debug "no floating button" reports on
+  // sites with strict CSP or aggressive layouts (e.g. some Greenhouse pages).
+  // Remove once the root cause is identified.
+  try {
+    console.log('[JobMatch AI] boot:', {
+      url: location.href.slice(0, 200),
+      topFrame: window === window.top,
+      bodyExists: !!document.body,
+      readyState: document.readyState,
+    });
+  } catch (_) {}
+
   // URL normalizer is loaded as a content script before us (see manifest.json).
   // Strips UTM/click-id noise so the analysis cache + applied-job dedupe work.
   // Defensive fallback if the helper failed to load for some reason.
@@ -4683,8 +4695,29 @@
   // In iframes, we only listen for autofill messages from the parent.
 
   if (window === window.top) {
-    createPanel();
-    createToggleButton();
+    try {
+      createPanel();
+      console.log('[JobMatch AI] createPanel ok');
+      createToggleButton();
+      console.log('[JobMatch AI] createToggleButton ok; host in DOM=',
+        !!document.getElementById('jobmatch-ai-toggle-host'));
+    } catch (e) {
+      console.error('[JobMatch AI] init error:', e && (e.stack || e.message || e));
+    }
+    // Watch for the page removing our toggle host (some SPAs replace body)
+    // — common cause of "button vanishes after a moment" reports.
+    try {
+      const host = document.getElementById('jobmatch-ai-toggle-host');
+      if (host && typeof MutationObserver === 'function') {
+        const obs = new MutationObserver(() => {
+          if (!host.isConnected) {
+            console.warn('[JobMatch AI] toggle host removed by page — re-appending');
+            document.body.appendChild(host);
+          }
+        });
+        obs.observe(document.body, { childList: true });
+      }
+    } catch (_) {}
   } else {
     // Running inside an iframe — listen for autofill requests from the parent
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
