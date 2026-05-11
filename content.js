@@ -1991,22 +1991,47 @@
       btn.style.top    = 'auto';
     }
 
-    // Auto-avoid reCAPTCHA badge. Both gadgets default to bottom-right;
-    // when a page (Greenhouse, Workday, government forms, etc.) embeds
-    // reCAPTCHA the badge overlaps our button. Watch for .grecaptcha-badge
-    // for ~5 s after init and lift our button above it. Only kicks in
-    // when the user has NOT dragged it themselves yet — drag-saved
-    // positions are honored verbatim.
+    // Auto-avoid reCAPTCHA / Enterprise reCAPTCHA / hCaptcha / Turnstile
+    // badges that default to the same bottom-right corner. Standard
+    // reCAPTCHA uses .grecaptcha-badge; Enterprise hosts the badge as
+    // an iframe from www.recaptcha.net or google.com/recaptcha; hCaptcha
+    // uses .h-captcha; Cloudflare Turnstile uses .cf-turnstile. Match
+    // any of them and lift our button clear of the badge's box.
     if (!saved) {
       let attempts = 0;
-      const RECAPTCHA_OFFSET_BOTTOM = 90; // reCAPTCHA badge is ~60 px tall + breathing room
-      const tick = setInterval(() => {
-        if (++attempts >= 30) { clearInterval(tick); return; } // give up after ~6 s
-        const badge = document.querySelector('.grecaptcha-badge');
-        if (badge) {
-          btn.style.bottom = RECAPTCHA_OFFSET_BOTTOM + 'px';
-          clearInterval(tick);
+      const SELECTORS = [
+        '.grecaptcha-badge',
+        '[class^="grecaptcha-"]',
+        'iframe[src*="recaptcha.net"]',
+        'iframe[src*="google.com/recaptcha"]',
+        '.h-captcha',
+        '.cf-turnstile',
+      ];
+      const findBadge = () => {
+        for (const sel of SELECTORS) {
+          const el = document.querySelector(sel);
+          if (el) return { el, sel };
         }
+        return null;
+      };
+      const tick = setInterval(() => {
+        if (++attempts >= 30) { clearInterval(tick); return; }   // give up after ~6 s
+        const hit = findBadge();
+        if (!hit) return;
+        const rect = hit.el.getBoundingClientRect();
+        // Place our button 12 px above the top of the badge. Clamp so we
+        // never push past the viewport on small windows.
+        const desiredBottom = Math.max(
+          24,
+          Math.min(window.innerHeight - 96, window.innerHeight - rect.top + 12)
+        );
+        btn.style.bottom = desiredBottom + 'px';
+        // One-time breadcrumb so future "still mixing up" reports tell us
+        // which selector matched + what dimensions the badge had.
+        console.log('[JobMatch AI] avoid-badge: matched', hit.sel,
+          'rect=', { top: rect.top, h: rect.height, w: rect.width },
+          '→ button bottom=' + desiredBottom + 'px');
+        clearInterval(tick);
       }, 200);
     }
 
