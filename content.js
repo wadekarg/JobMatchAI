@@ -65,6 +65,7 @@
   let panelRoot = null;         // The host DOM element that contains the Shadow DOM panel
   let shadowRoot = null;        // The closed Shadow DOM root — panel elements are queried from here
   let toggleBtnRef = null;      // Reference to the floating toggle button (inside closed Shadow DOM)
+  let toggleHostRef = null;     // The host DOM element that wraps the toggle button — needed for self-healing
 
   // Generation counter for analyze runs. Bumped when SPA navigation is
   // detected so an in-flight analysis can detect "the page changed under me"
@@ -2084,6 +2085,7 @@
     // Attach to shadow root for isolation
     const host = document.createElement('div');
     host.id = 'jobmatch-ai-toggle-host';
+    toggleHostRef = host; // module-level reference so self-healing can re-attach a detached host
     // Defend against page CSS that might target the host (e.g. Greenhouse
     // / Workday React templates with broad 'body > div' rules). Force-set
     // every visibility-affecting property inline with !important so page
@@ -4740,34 +4742,44 @@
       // appear on a page in the wild.
       console.error('[JobMatch AI] init error:', e && (e.stack || e.message || e));
     }
-    // Self-healing: keep both hosts as the last children of <html>. If a
-    // page hydration / SPA route change removes them OR appends something
-    // after them, we move our hosts back to the end so they win every
-    // stacking tie. Watches documentElement (not body) since that's where
-    // we attached the hosts.
+    // Self-healing: keep both hosts as the last children of <html>. Uses
+    // direct JS references to the host nodes (not getElementById) so
+    // re-attach works even if the page has fully detached them.
     try {
       if (typeof MutationObserver === 'function') {
+        const heldHosts = [panelRoot, toggleHostRef].filter(h => h && h.nodeType === 1);
         const ensureLast = () => {
-          for (const id of ['jobmatch-ai-toggle-host', 'jobmatch-ai-panel-host']) {
-            const h = document.getElementById(id);
-            if (!h) continue;
-            if (!h.isConnected || h !== document.documentElement.lastElementChild) {
-              document.documentElement.appendChild(h); // re-append moves to end
+          for (const h of heldHosts) {
+            if (h.parentElement !== document.documentElement ||
+                h !== document.documentElement.lastElementChild) {
+              document.documentElement.appendChild(h); // moves to end (or re-attaches)
             }
           }
         };
-        const obs = new MutationObserver(ensureLast);
+        const obs = new MutationObserver((mutations) => {
+          // Diagnostic: any time our hosts are removed, log who did it.
+          for (const m of mutations) {
+            for (const n of m.removedNodes || []) {
+              if (n && (n.id === 'jobmatch-ai-panel-host' || n.id === 'jobmatch-ai-toggle-host')) {
+                console.warn('[JobMatch AI] host removed from', m.target.tagName,
+                  '— re-attaching. Stack:', new Error().stack?.split('\n').slice(1, 4));
+              }
+            }
+          }
+          ensureLast();
+        });
         obs.observe(document.documentElement, { childList: true });
-        // Cheap belt-and-suspenders: re-check every 1 s for the first 10 s
-        // after init since some pages do their heavy re-render after MO
-        // microtasks have already fired.
+        // Belt-and-suspenders: 200 ms × 25 = ~5 s of aggressive re-checks
+        // for sites that mutate after MO microtasks have flushed.
         let n = 0;
         const tick = setInterval(() => {
           ensureLast();
-          if (++n >= 10) clearInterval(tick);
-        }, 1000);
+          if (++n >= 25) clearInterval(tick);
+        }, 200);
       }
-    } catch (_) {}
+    } catch (e) {
+      console.error('[JobMatch AI] self-heal setup failed:', e);
+    }
   } else {
     // Running inside an iframe — listen for autofill requests from the parent
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
