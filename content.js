@@ -245,6 +245,17 @@
   function createPanel() {
     const host = document.createElement('div');
     host.id = 'jobmatch-ai-panel-host';
+    // Same defensive inline styles as the toggle host — keep the panel
+    // host alive against page CSS that broad-targets body's children.
+    [
+      ['display', 'block'], ['visibility', 'visible'], ['opacity', '1'],
+      ['position', 'fixed'], ['top', '0'], ['left', '0'],
+      ['width', '0'], ['height', '0'],
+      ['z-index', '2147483647'],
+      ['pointer-events', 'none'],
+      ['transform', 'none'], ['filter', 'none'], ['clip', 'auto'],
+      ['margin', '0'], ['padding', '0'], ['border', '0'],
+    ].forEach(([k, v]) => host.style.setProperty(k, v, 'important'));
     document.body.appendChild(host);
 
     shadowRoot = host.attachShadow({ mode: 'closed' });
@@ -1022,6 +1033,10 @@
         height: 100vh;
         background: transparent;
         z-index: 2147483645;
+        /* Host has pointer-events:none to never block page clicks on the
+           rest of the viewport; backdrop opts back in so click-outside
+           still closes the panel. */
+        pointer-events: auto;
       }
 
       /* Toggle button (outside panel) */
@@ -1043,6 +1058,10 @@
         z-index: 2147483647;
         user-select: none;
         touch-action: none;
+        /* Host element sets pointer-events:none so it never blocks page
+           clicks on transparent areas; restore it here so the button
+           itself stays clickable. */
+        pointer-events: auto;
       }
       .jm-toggle:hover {
         transform: scale(1.1);
@@ -2064,6 +2083,21 @@
     // Attach to shadow root for isolation
     const host = document.createElement('div');
     host.id = 'jobmatch-ai-toggle-host';
+    // Defend against page CSS that might target the host (e.g. Greenhouse
+    // / Workday React templates with broad 'body > div' rules). Force-set
+    // every visibility-affecting property inline with !important so page
+    // styles can't override them. Host itself is a 0×0 fixed anchor in
+    // the corner — the actual button inside the shadow uses its own
+    // position:fixed bottom/right.
+    [
+      ['display', 'block'], ['visibility', 'visible'], ['opacity', '1'],
+      ['position', 'fixed'], ['top', '0'], ['left', '0'],
+      ['width', '0'], ['height', '0'],
+      ['z-index', '2147483647'],
+      ['pointer-events', 'none'], // button inside re-enables pointer-events
+      ['transform', 'none'], ['filter', 'none'], ['clip', 'auto'],
+      ['margin', '0'], ['padding', '0'], ['border', '0'],
+    ].forEach(([k, v]) => host.style.setProperty(k, v, 'important'));
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = getPanelCSS();
