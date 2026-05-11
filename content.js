@@ -1991,48 +1991,62 @@
       btn.style.top    = 'auto';
     }
 
-    // Auto-avoid reCAPTCHA / Enterprise reCAPTCHA / hCaptcha / Turnstile
-    // badges that default to the same bottom-right corner. Standard
-    // reCAPTCHA uses .grecaptcha-badge; Enterprise hosts the badge as
-    // an iframe from www.recaptcha.net or google.com/recaptcha; hCaptcha
-    // uses .h-captcha; Cloudflare Turnstile uses .cf-turnstile. Match
-    // any of them and lift our button clear of the badge's box.
+    // Auto-avoid ANY bottom-right occupant — reCAPTCHA (standard/Enterprise),
+    // hCaptcha, Turnstile, chat widgets, etc. Class-name matching is
+    // brittle; instead we ask the browser what's actually at the corner.
+    // elementsFromPoint returns the full stack of elements at a viewport
+    // coordinate. If anything other than the document root / body / our
+    // own host is there, lift our button above its top edge.
     if (!saved) {
       let attempts = 0;
-      const SELECTORS = [
-        '.grecaptcha-badge',
-        '[class^="grecaptcha-"]',
-        'iframe[src*="recaptcha.net"]',
-        'iframe[src*="google.com/recaptcha"]',
-        '.h-captcha',
-        '.cf-turnstile',
-      ];
-      const findBadge = () => {
-        for (const sel of SELECTORS) {
-          const el = document.querySelector(sel);
-          if (el) return { el, sel };
+      const STEP_MS = 200;
+      const MAX_ATTEMPTS = 30; // ~6 s — late-loaded badges (reCAPTCHA, etc.) usually arrive within 1-2 s
+
+      const probe = () => {
+        // Sample several points across a 60×60 box at the bottom-right
+        // corner so we catch occupants of any size or offset.
+        const w = window.innerWidth, h = window.innerHeight;
+        if (w < 100 || h < 100) return null;
+        const seen = new Set();
+        const occupants = [];
+        for (const [dx, dy] of [[20,20],[40,20],[20,40],[40,40],[60,60]]) {
+          const stack = document.elementsFromPoint(w - dx, h - dy);
+          for (const el of stack) {
+            if (!el || seen.has(el)) continue;
+            seen.add(el);
+            if (el === document.documentElement || el === document.body) continue;
+            if (el.id === 'jobmatch-ai-toggle-host') continue;
+            if (el.id === 'jobmatch-ai-panel-host')  continue;
+            // Skip any element with no real footprint
+            const r = el.getBoundingClientRect();
+            if (r.width < 16 || r.height < 16) continue;
+            // Skip elements that already cover the entire viewport
+            // (page wrappers, react roots, etc.)
+            if (r.width >= w - 40 && r.height >= h - 40) continue;
+            occupants.push({ el, top: r.top, height: r.height });
+          }
         }
-        return null;
+        return occupants.length ? occupants : null;
       };
+
       const tick = setInterval(() => {
-        if (++attempts >= 30) { clearInterval(tick); return; }   // give up after ~6 s
-        const hit = findBadge();
-        if (!hit) return;
-        const rect = hit.el.getBoundingClientRect();
-        // Place our button 12 px above the top of the badge. Clamp so we
-        // never push past the viewport on small windows.
+        if (++attempts >= MAX_ATTEMPTS) { clearInterval(tick); return; }
+        const occupants = probe();
+        if (!occupants) return;
+        // Lift our button above the highest-reaching occupant.
+        const topOfStack = Math.min(...occupants.map(o => o.top));
         const desiredBottom = Math.max(
           24,
-          Math.min(window.innerHeight - 96, window.innerHeight - rect.top + 12)
+          Math.min(window.innerHeight - 96, window.innerHeight - topOfStack + 12)
         );
         btn.style.bottom = desiredBottom + 'px';
-        // One-time breadcrumb so future "still mixing up" reports tell us
-        // which selector matched + what dimensions the badge had.
-        console.log('[JobMatch AI] avoid-badge: matched', hit.sel,
-          'rect=', { top: rect.top, h: rect.height, w: rect.width },
-          '→ button bottom=' + desiredBottom + 'px');
+        // One-time diagnostic so we can see what was actually there.
+        const summary = occupants.slice(0, 3).map(o =>
+          `${o.el.tagName}${o.el.id ? '#' + o.el.id : ''}.${(o.el.className || '').slice(0, 40)}`);
+        console.log('[JobMatch AI] corner occupied → lifting to bottom=' + desiredBottom + 'px;',
+          'occupants:', summary);
         clearInterval(tick);
-      }, 200);
+      }, STEP_MS);
     }
 
     // ── Drag logic ──
