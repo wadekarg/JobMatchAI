@@ -2201,6 +2201,17 @@
     panelOpen = !panelOpen;
     if (!panelRoot) createPanel();
 
+    // If the page (e.g. a heavy React app like Greenhouse) has removed
+    // our hosts from the DOM, re-attach them when the user explicitly
+    // triggers the panel. Event-driven so it can never loop with the
+    // page's reconciler — only fires on user action.
+    if (panelRoot && !panelRoot.isConnected) {
+      try { document.body.appendChild(panelRoot); } catch (_) {}
+    }
+    if (toggleHostRef && !toggleHostRef.isConnected) {
+      try { document.body.appendChild(toggleHostRef); } catch (_) {}
+    }
+
     const panel = shadowRoot.getElementById('jm-panel');
 
     // Update accessibility attributes on the toggle button
