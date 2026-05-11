@@ -246,13 +246,7 @@
       ['transform', 'none'], ['filter', 'none'], ['clip', 'auto'],
       ['margin', '0'], ['padding', '0'], ['border', '0'],
     ].forEach(([k, v]) => host.style.setProperty(k, v, 'important'));
-    // Attach to documentElement (html) instead of body so we sit AFTER body
-    // in DOM order. Stacking-context ties (max-int32 z-index battles with
-    // reCAPTCHA, chat widgets, etc.) are broken by DOM order — later wins —
-    // and being a child of <html> means nothing inside <body> can ever
-    // paint over us. Also survives React hydration replacing body's
-    // children since our host isn't one of them.
-    document.documentElement.appendChild(host);
+    document.body.appendChild(host);
 
     shadowRoot = host.attachShadow({ mode: 'closed' });
     panelRoot = host;
@@ -2106,8 +2100,7 @@
     style.textContent = getPanelCSS();
     shadow.appendChild(style);
     shadow.appendChild(btn);
-    // Attach to <html>, not <body> — see same-reason comment in createPanel.
-    document.documentElement.appendChild(host);
+    document.body.appendChild(host);
   }
 
   // ─── Resume slot switcher ─────────────────────────────────────
@@ -4742,44 +4735,14 @@
       // appear on a page in the wild.
       console.error('[JobMatch AI] init error:', e && (e.stack || e.message || e));
     }
-    // Self-healing: keep both hosts as the last children of <html>. Uses
-    // direct JS references to the host nodes (not getElementById) so
-    // re-attach works even if the page has fully detached them.
-    try {
-      if (typeof MutationObserver === 'function') {
-        const heldHosts = [panelRoot, toggleHostRef].filter(h => h && h.nodeType === 1);
-        const ensureLast = () => {
-          for (const h of heldHosts) {
-            if (h.parentElement !== document.documentElement ||
-                h !== document.documentElement.lastElementChild) {
-              document.documentElement.appendChild(h); // moves to end (or re-attaches)
-            }
-          }
-        };
-        const obs = new MutationObserver((mutations) => {
-          // Diagnostic: any time our hosts are removed, log who did it.
-          for (const m of mutations) {
-            for (const n of m.removedNodes || []) {
-              if (n && (n.id === 'jobmatch-ai-panel-host' || n.id === 'jobmatch-ai-toggle-host')) {
-                console.warn('[JobMatch AI] host removed from', m.target.tagName,
-                  '— re-attaching. Stack:', new Error().stack?.split('\n').slice(1, 4));
-              }
-            }
-          }
-          ensureLast();
-        });
-        obs.observe(document.documentElement, { childList: true });
-        // Belt-and-suspenders: 200 ms × 25 = ~5 s of aggressive re-checks
-        // for sites that mutate after MO microtasks have flushed.
-        let n = 0;
-        const tick = setInterval(() => {
-          ensureLast();
-          if (++n >= 25) clearInterval(tick);
-        }, 200);
-      }
-    } catch (e) {
-      console.error('[JobMatch AI] self-heal setup failed:', e);
-    }
+    // Note: a previous version of this code had a MutationObserver +
+    // setInterval that aggressively re-appended our hosts whenever a page
+    // detached them. On heavily-React-driven sites (Greenhouse job boards
+    // are the worst case) the page's reconciler kept removing our nodes
+    // and we kept re-attaching them, generating tens of thousands of
+    // mutation events and breaking the page. Removed. If a page strips
+    // our hosts, the toolbar icon still opens the panel — we don't need
+    // to fight the page to keep a floating button alive.
   } else {
     // Running inside an iframe — listen for autofill requests from the parent
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
