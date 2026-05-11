@@ -245,7 +245,13 @@
       ['transform', 'none'], ['filter', 'none'], ['clip', 'auto'],
       ['margin', '0'], ['padding', '0'], ['border', '0'],
     ].forEach(([k, v]) => host.style.setProperty(k, v, 'important'));
-    document.body.appendChild(host);
+    // Attach to documentElement (html) instead of body so we sit AFTER body
+    // in DOM order. Stacking-context ties (max-int32 z-index battles with
+    // reCAPTCHA, chat widgets, etc.) are broken by DOM order — later wins —
+    // and being a child of <html> means nothing inside <body> can ever
+    // paint over us. Also survives React hydration replacing body's
+    // children since our host isn't one of them.
+    document.documentElement.appendChild(host);
 
     shadowRoot = host.attachShadow({ mode: 'closed' });
     panelRoot = host;
@@ -1991,63 +1997,11 @@
       btn.style.top    = 'auto';
     }
 
-    // Auto-avoid ANY bottom-right occupant — reCAPTCHA (standard/Enterprise),
-    // hCaptcha, Turnstile, chat widgets, etc. Class-name matching is
-    // brittle; instead we ask the browser what's actually at the corner.
-    // elementsFromPoint returns the full stack of elements at a viewport
-    // coordinate. If anything other than the document root / body / our
-    // own host is there, lift our button above its top edge.
-    if (!saved) {
-      let attempts = 0;
-      const STEP_MS = 200;
-      const MAX_ATTEMPTS = 30; // ~6 s — late-loaded badges (reCAPTCHA, etc.) usually arrive within 1-2 s
-
-      const probe = () => {
-        // Sample several points across a 60×60 box at the bottom-right
-        // corner so we catch occupants of any size or offset.
-        const w = window.innerWidth, h = window.innerHeight;
-        if (w < 100 || h < 100) return null;
-        const seen = new Set();
-        const occupants = [];
-        for (const [dx, dy] of [[20,20],[40,20],[20,40],[40,40],[60,60]]) {
-          const stack = document.elementsFromPoint(w - dx, h - dy);
-          for (const el of stack) {
-            if (!el || seen.has(el)) continue;
-            seen.add(el);
-            if (el === document.documentElement || el === document.body) continue;
-            if (el.id === 'jobmatch-ai-toggle-host') continue;
-            if (el.id === 'jobmatch-ai-panel-host')  continue;
-            // Skip any element with no real footprint
-            const r = el.getBoundingClientRect();
-            if (r.width < 16 || r.height < 16) continue;
-            // Skip elements that already cover the entire viewport
-            // (page wrappers, react roots, etc.)
-            if (r.width >= w - 40 && r.height >= h - 40) continue;
-            occupants.push({ el, top: r.top, height: r.height });
-          }
-        }
-        return occupants.length ? occupants : null;
-      };
-
-      const tick = setInterval(() => {
-        if (++attempts >= MAX_ATTEMPTS) { clearInterval(tick); return; }
-        const occupants = probe();
-        if (!occupants) return;
-        // Lift our button above the highest-reaching occupant.
-        const topOfStack = Math.min(...occupants.map(o => o.top));
-        const desiredBottom = Math.max(
-          24,
-          Math.min(window.innerHeight - 96, window.innerHeight - topOfStack + 12)
-        );
-        btn.style.bottom = desiredBottom + 'px';
-        // One-time diagnostic so we can see what was actually there.
-        const summary = occupants.slice(0, 3).map(o =>
-          `${o.el.tagName}${o.el.id ? '#' + o.el.id : ''}.${(o.el.className || '').slice(0, 40)}`);
-        console.log('[JobMatch AI] corner occupied → lifting to bottom=' + desiredBottom + 'px;',
-          'occupants:', summary);
-        clearInterval(tick);
-      }, STEP_MS);
-    }
+    // Auto-position based on what's at the corner was the wrong abstraction
+    // — the button's position is user-controlled (drag), and the real
+    // problem was reCAPTCHA painting over us, not which spot we sit in.
+    // Stacking is now handled by attaching the host to <html> rather than
+    // <body> (see the documentElement.appendChild call below).
 
     // ── Drag logic ──
     let didDrag = false, startX, startY, startRight, startBottom;
@@ -2150,7 +2104,8 @@
     style.textContent = getPanelCSS();
     shadow.appendChild(style);
     shadow.appendChild(btn);
-    document.body.appendChild(host);
+    // Attach to <html>, not <body> — see same-reason comment in createPanel.
+    document.documentElement.appendChild(host);
   }
 
   // ─── Resume slot switcher ─────────────────────────────────────
@@ -4785,15 +4740,32 @@
       // appear on a page in the wild.
       console.error('[JobMatch AI] init error:', e && (e.stack || e.message || e));
     }
-    // Self-healing: if the page later removes our toggle host (some SPAs
-    // replace body during hydration / SPA route changes), re-append it.
+    // Self-healing: keep both hosts as the last children of <html>. If a
+    // page hydration / SPA route change removes them OR appends something
+    // after them, we move our hosts back to the end so they win every
+    // stacking tie. Watches documentElement (not body) since that's where
+    // we attached the hosts.
     try {
-      const host = document.getElementById('jobmatch-ai-toggle-host');
-      if (host && typeof MutationObserver === 'function') {
-        const obs = new MutationObserver(() => {
-          if (!host.isConnected) document.body.appendChild(host);
-        });
-        obs.observe(document.body, { childList: true });
+      if (typeof MutationObserver === 'function') {
+        const ensureLast = () => {
+          for (const id of ['jobmatch-ai-toggle-host', 'jobmatch-ai-panel-host']) {
+            const h = document.getElementById(id);
+            if (!h) continue;
+            if (!h.isConnected || h !== document.documentElement.lastElementChild) {
+              document.documentElement.appendChild(h); // re-append moves to end
+            }
+          }
+        };
+        const obs = new MutationObserver(ensureLast);
+        obs.observe(document.documentElement, { childList: true });
+        // Cheap belt-and-suspenders: re-check every 1 s for the first 10 s
+        // after init since some pages do their heavy re-render after MO
+        // microtasks have already fired.
+        let n = 0;
+        const tick = setInterval(() => {
+          ensureLast();
+          if (++n >= 10) clearInterval(tick);
+        }, 1000);
       }
     } catch (_) {}
   } else {
