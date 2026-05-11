@@ -40,17 +40,6 @@
   if (window.__jobmatchAILoaded) return;
   window.__jobmatchAILoaded = true;
 
-  // Boot diagnostic — temporary, helps debug "no floating button" reports on
-  // sites with strict CSP or aggressive layouts (e.g. some Greenhouse pages).
-  // Remove once the root cause is identified.
-  try {
-    console.log('[JobMatch AI] boot:', {
-      url: location.href.slice(0, 200),
-      topFrame: window === window.top,
-      bodyExists: !!document.body,
-      readyState: document.readyState,
-    });
-  } catch (_) {}
 
   // URL normalizer is loaded as a content script before us (see manifest.json).
   // Strips UTM/click-id noise so the analysis cache + applied-job dedupe work.
@@ -2000,6 +1989,25 @@
       btn.style.bottom = defaultBottom + 'px';
       btn.style.left   = 'auto';
       btn.style.top    = 'auto';
+    }
+
+    // Auto-avoid reCAPTCHA badge. Both gadgets default to bottom-right;
+    // when a page (Greenhouse, Workday, government forms, etc.) embeds
+    // reCAPTCHA the badge overlaps our button. Watch for .grecaptcha-badge
+    // for ~5 s after init and lift our button above it. Only kicks in
+    // when the user has NOT dragged it themselves yet — drag-saved
+    // positions are honored verbatim.
+    if (!saved) {
+      let attempts = 0;
+      const RECAPTCHA_OFFSET_BOTTOM = 90; // reCAPTCHA badge is ~60 px tall + breathing room
+      const tick = setInterval(() => {
+        if (++attempts >= 30) { clearInterval(tick); return; } // give up after ~6 s
+        const badge = document.querySelector('.grecaptcha-badge');
+        if (badge) {
+          btn.style.bottom = RECAPTCHA_OFFSET_BOTTOM + 'px';
+          clearInterval(tick);
+        }
+      }, 200);
     }
 
     // ── Drag logic ──
@@ -4731,23 +4739,20 @@
   if (window === window.top) {
     try {
       createPanel();
-      console.log('[JobMatch AI] createPanel ok');
       createToggleButton();
-      console.log('[JobMatch AI] createToggleButton ok; host in DOM=',
-        !!document.getElementById('jobmatch-ai-toggle-host'));
     } catch (e) {
+      // Only surface errors — successful init stays silent. The thrown
+      // error gives us a console breadcrumb if the panel ever fails to
+      // appear on a page in the wild.
       console.error('[JobMatch AI] init error:', e && (e.stack || e.message || e));
     }
-    // Watch for the page removing our toggle host (some SPAs replace body)
-    // — common cause of "button vanishes after a moment" reports.
+    // Self-healing: if the page later removes our toggle host (some SPAs
+    // replace body during hydration / SPA route changes), re-append it.
     try {
       const host = document.getElementById('jobmatch-ai-toggle-host');
       if (host && typeof MutationObserver === 'function') {
         const obs = new MutationObserver(() => {
-          if (!host.isConnected) {
-            console.warn('[JobMatch AI] toggle host removed by page — re-appending');
-            document.body.appendChild(host);
-          }
+          if (!host.isConnected) document.body.appendChild(host);
         });
         obs.observe(document.body, { childList: true });
       }
