@@ -76,6 +76,12 @@
   let _h1bActiveIdx    = 0;
   let _h1bLastUpdated  = '';
 
+  // Whether the "Visa Sponsorship" collapsible section is open. Persisted
+  // across panel opens / SPA navs under chrome.storage.local['jm_visaOpen']
+  // so users who need visa info don't have to re-expand on every job.
+  const VISA_OPEN_KEY  = 'jm_visaOpen';
+  let _visaSectionOpen = false;
+
   // AutoFill state
   let _fieldMap        = {};   // Map of question_id → { el, type, ... } built during field detection
   // Preview-gate state (C5). Set when the AI returns proposed answers and
@@ -771,8 +777,53 @@
         display: none;
       }
 
-      /* Visa-phrase signal chip (above the action buttons). Two visual
-         states driven by .jm-visa-chip-* modifier classes. */
+      /* Collapsible "Visa Sponsorship" section that holds both the
+         visa-phrase chip and the H1B chip. Hidden when neither has data;
+         starts collapsed when first shown (open/closed state persists
+         per-user in chrome.storage.local). */
+      .jm-visa-section {
+        margin: 0 0 12px 0;
+      }
+      .jm-visa-section[open] .jm-visa-summary { margin-bottom: 8px; }
+      .jm-visa-summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 10px;
+        background: var(--jm-card-bg);
+        border: 1px solid var(--jm-border);
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--jm-text);
+        user-select: none;
+        transition: background 0.12s;
+      }
+      .jm-visa-summary:hover { background: var(--jm-border-2, var(--jm-border)); }
+      .jm-visa-summary::-webkit-details-marker { display: none; }
+      /* Chevron drawn from CSS so we control the rotation cleanly. */
+      .jm-visa-summary::before {
+        content: '';
+        display: inline-block;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 4px 0 4px 6px;
+        border-color: transparent transparent transparent currentColor;
+        transition: transform 0.15s;
+        flex-shrink: 0;
+      }
+      .jm-visa-section[open] .jm-visa-summary::before { transform: rotate(90deg); }
+      .jm-visa-summary-text { flex: 1; }
+      .jm-visa-summary-hint {
+        font-weight: 400;
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
+      /* Visa-phrase signal chip (now lives inside the collapsible section).
+         Two visual states driven by .jm-visa-chip-* modifier classes. */
       .jm-visa-chip {
         margin: 0 0 12px 0;
         padding: 9px 12px;
@@ -1475,14 +1526,25 @@
           </div>
         </div>
 
-        <!-- Visa-phrase signal chip (filled by scanVisaSignal). Hidden by default;
-             revealed when the JD contains explicit sponsorship language. -->
-        <div class="jm-visa-chip" id="jmVisaChip" style="display:none" title=""></div>
+        <!-- Visa & H1B info collapsed into one section so users who
+             don't need this info aren't visually distracted by it. The
+             whole <details> is hidden when neither sub-chip has data;
+             open/closed state persists per-user under jm_visaOpen. -->
+        <details class="jm-visa-section" id="jmVisaSection" style="display:none">
+          <summary class="jm-visa-summary">
+            <span class="jm-visa-summary-text">Visa Sponsorship</span>
+            <span class="jm-visa-summary-hint" id="jmVisaSummaryHint"></span>
+          </summary>
+          <!-- Visa-phrase signal chip (filled by scanVisaSignal). Hidden
+               by default; revealed when the JD contains explicit
+               sponsorship language. -->
+          <div class="jm-visa-chip" id="jmVisaChip" style="display:none" title=""></div>
 
-        <!-- H1B history chip (filled by scanH1bSignal). Shows only when the
-             public USCIS data has at least one approved petition for this
-             employer. Click opens the USCIS Employer Data Hub. -->
-        <a class="jm-h1b-chip" id="jmH1bChip" href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noopener noreferrer" style="display:none" title=""></a>
+          <!-- H1B history chip (filled by scanH1bSignal). Shows only when
+               USCIS has approved petitions for this employer. Click
+               opens the USCIS Employer Data Hub. -->
+          <a class="jm-h1b-chip" id="jmH1bChip" href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noopener noreferrer" style="display:none" title=""></a>
+        </details>
 
         <!-- Resume slot switcher -->
         <div class="jm-resume-switcher" id="jmResumeSwitch">
@@ -1661,6 +1723,12 @@
         _h1bActiveIdx = idx;
         renderH1bChip();
       }
+    });
+    // Persist the open/closed state of the "Visa Sponsorship" section so
+    // users who toggle it open don't have to re-toggle on every job.
+    panel.querySelector('#jmVisaSection').addEventListener('toggle', (e) => {
+      _visaSectionOpen = e.target.open;
+      try { chrome.storage.local.set({ [VISA_OPEN_KEY]: _visaSectionOpen }); } catch (_) {}
     });
     panel.querySelector('#jmCopyCoverLetter').addEventListener('click', () => {
       const text = shadowRoot.getElementById('jmCoverLetterText').textContent;
@@ -2122,8 +2190,12 @@
       checkIfApplied();
       checkIfSaved();
       loadJobNotes();
-      scanVisaSignal(); // pre-analyze warning if JD says "no sponsorship"
-      scanH1bSignal();  // public H1B history chip (fail-soft, no-op if endpoint down)
+      loadVisaSectionState().then(() => {
+        // Have to load state BEFORE the scans render so the section opens
+        // in the user's preferred state on first appearance.
+        scanVisaSignal();
+        scanH1bSignal();
+      });
       // Ensure we start on the main tab when opening the panel
       deactivateSavedTab();
     } else {
@@ -2163,6 +2235,41 @@
   }
 
   /**
+   * Show or hide the "Visa Sponsorship" collapsible section based on
+   * whether either sub-chip has data. Also writes a tiny hint into the
+   * summary line so users can tell at a glance whether anything's there
+   * even when the section is collapsed.
+   */
+  function updateVisaSection() {
+    const section = shadowRoot && shadowRoot.getElementById('jmVisaSection');
+    if (!section) return;
+    const visa = shadowRoot.getElementById('jmVisaChip');
+    const h1b  = shadowRoot.getElementById('jmH1bChip');
+    const hasVisa = visa && visa.style.display !== 'none';
+    const hasH1b  = h1b  && h1b.style.display  !== 'none';
+    if (!hasVisa && !hasH1b) {
+      section.style.display = 'none';
+      return;
+    }
+    // Tiny inline summary so a collapsed section still tells you something.
+    const bits = [];
+    if (hasVisa) bits.push(visa.classList.contains('jm-visa-chip-yes') ? '✓ sponsored' : '⚠ no sponsorship');
+    if (hasH1b)  bits.push('🌐 H1B history');
+    const hint = shadowRoot.getElementById('jmVisaSummaryHint');
+    if (hint) hint.textContent = bits.length ? '· ' + bits.join(' · ') : '';
+    section.style.display = '';
+    section.open = !!_visaSectionOpen;
+  }
+
+  /** Load the persisted open/closed state once on panel open. */
+  async function loadVisaSectionState() {
+    try {
+      const r = await chrome.storage.local.get(VISA_OPEN_KEY);
+      _visaSectionOpen = !!r[VISA_OPEN_KEY];
+    } catch (_) { _visaSectionOpen = false; }
+  }
+
+  /**
    * Run the visa-phrase detector against the current page's JD and render
    * a chip above the action buttons. Called when the panel opens and after
    * SPA navigation. Pure regex/string match — no AI call, no network.
@@ -2197,6 +2304,7 @@
       chip.innerHTML = '';
       chip.title = '';
     }
+    updateVisaSection();
   }
 
   /**
@@ -2211,9 +2319,10 @@
   async function scanH1bSignal() {
     const chip = shadowRoot && shadowRoot.getElementById('jmH1bChip');
     if (!chip) return;
+    const hideAndDone = () => { chip.style.display = 'none'; updateVisaSection(); };
     let company = '';
     try { company = (extractCompany() || '').trim(); } catch (_) {}
-    if (!company || company.length < 2) { chip.style.display = 'none'; return; }
+    if (!company || company.length < 2) return hideAndDone();
 
     const myGen = _analyzeGen;
     let data;
@@ -2222,7 +2331,7 @@
     } catch (_) { data = null; }
 
     if (myGen !== _analyzeGen) return;
-    if (!data || !data.found) { chip.style.display = 'none'; return; }
+    if (!data || !data.found) return hideAndDone();
 
     // Prefer the new `matches` array. Fall back to constructing a
     // single-element array from the legacy top-level fields if a stale
@@ -2231,7 +2340,7 @@
     const matches = Array.isArray(data.matches) && data.matches.length > 0
       ? data.matches
       : (data.h1b ? [{ key: '_legacy', displayName: data.displayName || '', h1b: data.h1b }] : []);
-    if (matches.length === 0)  { chip.style.display = 'none'; return; }
+    if (matches.length === 0) return hideAndDone();
 
     _h1bMatches      = matches;
     _h1bActiveIdx    = 0;
@@ -2248,11 +2357,12 @@
     const chip = shadowRoot && shadowRoot.getElementById('jmH1bChip');
     if (!chip || !_h1bMatches || _h1bMatches.length === 0) {
       if (chip) chip.style.display = 'none';
+      updateVisaSection();
       return;
     }
     const m     = _h1bMatches[_h1bActiveIdx] || _h1bMatches[0];
     const total = (m.h1b && m.h1b.total) || 0;
-    if (total <= 0) { chip.style.display = 'none'; return; }
+    if (total <= 0) { chip.style.display = 'none'; updateVisaSection(); return; }
 
     const dateLine = `H1B sponsor &mdash; data through ${escapeHTML(_h1bLastUpdated || 'n/a')}`;
     let tabsOrName;
@@ -2279,6 +2389,7 @@
       </span>`;
     chip.title = 'Click bars or this chip to view the full H1B history on the USCIS Employer Data Hub.';
     chip.style.display = 'flex';
+    updateVisaSection();
   }
 
   /** Reverse-sorted history → bar markup. Returns '' when history is empty. */
@@ -4701,7 +4812,7 @@
         'jmInsightsSection', 'jmKeywordsSection', 'jmTruncNotice', 'jmResumeTruncNotice',
         'jmAutofillWarning', 'jmAutofillPreview', 'jmCoverLetterSection', 'jmBulletSection',
         'jmJobInfo', 'jmSaveJob', 'jmMarkApplied', 'jmCoverLetterBtn', 'jmRewriteBulletsBtn',
-        'jmVisaChip', 'jmH1bChip'
+        'jmVisaChip', 'jmH1bChip', 'jmVisaSection'
       ].forEach(id => {
         const el = shadowRoot.getElementById(id);
         if (el) el.style.display = 'none';
