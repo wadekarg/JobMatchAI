@@ -4735,8 +4735,22 @@
   // The panel starts hidden (no .open class); it is shown on first togglePanel() call.
   // Only create the panel and toggle button in the top frame — not in iframes.
   // In iframes, we only listen for autofill messages from the parent.
+  //
+  // `window === window.top` alone is not enough: sandboxed iframes (e.g.
+  // reCAPTCHA's badge iframe at ~256×60) have `window.top` aliased to
+  // themselves, so the equality check returns true and we'd inject a full
+  // panel into a tiny third-party iframe. We saw this on Greenhouse job
+  // pages — the panel header rendered inside the reCAPTCHA badge box.
+  // Defense in depth: also check that we have a real viewport.
+  function isRealTopFrame() {
+    try { if (window !== window.top) return false; } catch (_) { return false; }
+    try { if (window !== window.parent) return false; } catch (_) { return false; }
+    try { if (window.frameElement) return false; } catch (_) { /* cross-origin → fall through */ }
+    if (window.innerWidth < 500 || window.innerHeight < 400) return false;
+    return true;
+  }
 
-  if (window === window.top) {
+  if (isRealTopFrame()) {
     try {
       createPanel();
       createToggleButton();

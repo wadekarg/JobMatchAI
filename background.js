@@ -1073,11 +1073,11 @@ const handlers = {
   // tab ID), so these messages are relayed through the service worker which
   // can identify the active tab and forward the message to its content script.
 
-  'TOGGLE_PANEL': (msg) => forwardToActiveTab(msg),
-
-  'TRIGGER_ANALYZE': (msg) => forwardToActiveTab(msg),
-
-  'TRIGGER_AUTOFILL': (msg) => forwardToActiveTab(msg),
+  // Panel-control messages target the top frame only — iframes don't host
+  // panel UI (see content.js isRealTopFrame).
+  'TOGGLE_PANEL':     (msg) => forwardToActiveTab(msg, { frameId: 0 }),
+  'TRIGGER_ANALYZE':  (msg) => forwardToActiveTab(msg, { frameId: 0 }),
+  'TRIGGER_AUTOFILL': (msg) => forwardToActiveTab(msg, { frameId: 0 }),
 
   'AUTOFILL_IN_FRAMES': async () => {
     // Broadcast AUTOFILL_IN_FRAME to all frames in the active tab
@@ -1117,13 +1117,13 @@ async function handleMessage(message, sender) {
  *   user has no normal tab open — only devtools or the extension page itself).
  * @returns {Promise<*>} Whatever the content script's sendMessage handler returns.
  */
-async function forwardToActiveTab(message) {
+async function forwardToActiveTab(message, options) {
   // Query for exactly one tab: the focused tab in the current browser window
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   // Guard against edge cases (e.g. only a devtools window is active)
   if (!tab?.id) throw new Error('No active tab found');
   // Forward the original message object to the content script in the active tab
-  return chrome.tabs.sendMessage(tab.id, message);
+  return chrome.tabs.sendMessage(tab.id, message, options);
 }
 
 
@@ -1137,7 +1137,10 @@ async function forwardToActiveTab(message) {
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
     try {
-      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' });
+      // Target the top frame explicitly (frameId 0). Without this, the
+      // message broadcasts to every frame, including sandboxed iframes
+      // (e.g. reCAPTCHA badge) where the panel must not render.
+      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' }, { frameId: 0 });
     } catch (e) {
       // Content script not loaded on this page (e.g. chrome:// pages)
     }
