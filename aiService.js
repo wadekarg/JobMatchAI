@@ -102,6 +102,7 @@ const PROVIDERS = {
       { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
     ],
     defaultModel: 'claude-sonnet-4-20250514',
+    listModels: fetchAnthropicModels,
   },
 
   // ── OpenAI ────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ const PROVIDERS = {
       { id: 'o3-mini', name: 'o3-mini (Reasoning)' },
     ],
     defaultModel: 'gpt-4.1',
+    listModels: fetchOpenAIModels,
   },
 
   // ── Google Gemini ─────────────────────────────────────────────────
@@ -152,6 +154,7 @@ const PROVIDERS = {
       { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
     ],
     defaultModel: 'gemini-2.5-flash',
+    listModels: fetchGeminiModels,
   },
 
   // ── Groq ──────────────────────────────────────────────────────────
@@ -174,6 +177,7 @@ const PROVIDERS = {
       { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
     ],
     defaultModel: 'llama-3.3-70b-versatile',
+    listModels: fetchGroqModels,
   },
 
   // ── Cerebras ──────────────────────────────────────────────────────
@@ -195,6 +199,7 @@ const PROVIDERS = {
       { id: 'zai-glm-4.7', name: 'Z.ai GLM 4.7' },
     ],
     defaultModel: 'llama3.1-8b',
+    listModels: fetchCerebrasModels,
   },
 
   // ── Together AI ───────────────────────────────────────────────────
@@ -216,6 +221,7 @@ const PROVIDERS = {
       { id: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B', name: 'DeepSeek R1 70B' },
     ],
     defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    listModels: fetchTogetherModels,
   },
 
   // ── OpenRouter ────────────────────────────────────────────────────
@@ -242,6 +248,7 @@ const PROVIDERS = {
       { id: 'qwen/qwen-2.5-72b-instruct:free', name: 'Qwen 2.5 72B (Free)' },
     ],
     defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    listModels: fetchOpenRouterModels,
   },
 
   // ── Mistral AI ────────────────────────────────────────────────────
@@ -264,6 +271,7 @@ const PROVIDERS = {
       { id: 'codestral-25-08', name: 'Codestral' },
     ],
     defaultModel: 'mistral-large-latest',
+    listModels: fetchMistralModels,
   },
 
   // ── DeepSeek ──────────────────────────────────────────────────────
@@ -283,6 +291,7 @@ const PROVIDERS = {
       { id: 'deepseek-reasoner', name: 'DeepSeek R1' },
     ],
     defaultModel: 'deepseek-chat',
+    listModels: fetchDeepSeekModels,
   },
 
   // ── Cohere ────────────────────────────────────────────────────────
@@ -308,8 +317,330 @@ const PROVIDERS = {
       { id: 'command-r7b-12-2024', name: 'Command R 7B (Fast)' },
     ],
     defaultModel: 'command-a-03-2025',
+    listModels: fetchCohereModels,
   },
 };
+
+// ─── Model listing — shared helpers ───────────────────────────────
+
+/**
+ * Maps an HTTP response to a user-facing error with provider context.
+ * Used by every provider's fetchXModels wrapper.
+ */
+function httpError(res, providerName) {
+  if (res.status === 401 || res.status === 403) {
+    return new Error(`Invalid API key for ${providerName}`);
+  }
+  if (res.status === 429) {
+    return new Error('Rate limited — try again in a moment');
+  }
+  if (res.status >= 500) {
+    return new Error(`${providerName} is down — try again later`);
+  }
+  return new Error(`Could not fetch models (HTTP ${res.status})`);
+}
+
+// ─── Anthropic ────────────────────────────────────────────────────
+
+/**
+ * Parses Anthropic's GET /v1/models response into [{id, name}].
+ * Filters to claude-* models. Falls back to id when display_name is absent.
+ * Pure function — testable without a network call.
+ */
+export function parseAnthropicModels(json) {
+  const data = Array.isArray(json?.data) ? json.data : [];
+  return data
+    .filter(m => /^claude-/.test(m.id || ''))
+    .map(m => ({ id: m.id, name: m.display_name || m.id }));
+}
+
+/**
+ * Fetches the live Anthropic model list. Requires a working API key.
+ * Times out at 8s. Returns the filtered chat-model list.
+ */
+async function fetchAnthropicModels(apiKey) {
+  const res = await fetch('https://api.anthropic.com/v1/models', {
+    method: 'GET',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Anthropic');
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('Unexpected response from Anthropic — use Custom… to enter a model ID manually');
+  }
+  return parseAnthropicModels(json);
+}
+
+// ─── OpenAI ───────────────────────────────────────────────────────
+
+/**
+ * Parses OpenAI's GET /v1/models response into [{id, name}].
+ * Filters to chat-completion-capable models: gpt-*, o\d*, chatgpt-*.
+ * Drops embeddings, image, audio, moderation, legacy fine-tunes.
+ */
+export function parseOpenAIModels(json) {
+  const data = Array.isArray(json?.data) ? json.data : [];
+  return data
+    .filter(m => /^(gpt-|o\d|chatgpt-)/.test(m.id || ''))
+    // Drop non-chat-completion gpt-* variants: realtime (WebSocket-only),
+    // audio-preview, transcribe (STT), tts (TTS), image-* (image gen),
+    // search-preview (different endpoint signature).
+    .filter(m => !/(realtime|audio-preview|transcribe|-tts|gpt-image|search-preview)/.test(m.id || ''))
+    .map(m => ({ id: m.id, name: m.id }));
+}
+
+async function fetchOpenAIModels(apiKey) {
+  const res = await fetch('https://api.openai.com/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'OpenAI');
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('Unexpected response from OpenAI — use Custom… to enter a model ID manually');
+  }
+  return parseOpenAIModels(json);
+}
+
+// ─── Google Gemini ────────────────────────────────────────────────
+
+/**
+ * Parses Gemini's GET /v1beta/models response into [{id, name}].
+ * Strips the "models/" prefix from each name. Keeps only gemini-* models
+ * that advertise generateContent support.
+ */
+export function parseGeminiModels(json) {
+  const models = Array.isArray(json?.models) ? json.models : [];
+  return models
+    .map(m => {
+      const rawName = m.name || '';
+      const id = rawName.startsWith('models/') ? rawName.slice('models/'.length) : rawName;
+      return { ...m, _id: id };
+    })
+    .filter(m =>
+      /^gemini-/.test(m._id) &&
+      Array.isArray(m.supportedGenerationMethods) &&
+      m.supportedGenerationMethods.includes('generateContent')
+    )
+    .map(m => ({ id: m._id, name: m.displayName || m._id }));
+}
+
+async function fetchGeminiModels(apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Google Gemini');
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('Unexpected response from Google Gemini — use Custom… to enter a model ID manually');
+  }
+  return parseGeminiModels(json);
+}
+
+// ─── Cohere ───────────────────────────────────────────────────────
+
+/**
+ * Parses Cohere's GET /v1/models response into [{id, name}].
+ * Filters to models whose endpoints array includes 'chat'. The model's
+ * `name` field is both the id and the human-facing name (Cohere doesn't
+ * expose a separate display field).
+ */
+export function parseCohereModels(json) {
+  const models = Array.isArray(json?.models) ? json.models : [];
+  return models
+    .filter(m =>
+      typeof m.name === 'string' && m.name.length > 0 &&
+      Array.isArray(m.endpoints) && m.endpoints.includes('chat')
+    )
+    .map(m => ({ id: m.name, name: m.name }));
+}
+
+async function fetchCohereModels(apiKey) {
+  const res = await fetch('https://api.cohere.com/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Cohere');
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('Unexpected response from Cohere — use Custom… to enter a model ID manually');
+  }
+  return parseCohereModels(json);
+}
+
+// ─── Groq, Cerebras, Mistral, DeepSeek — chat-only OpenAI-shape providers ───
+
+/**
+ * Generic helper for providers that host ONLY chat models on /models.
+ * Returns [{id, name}] where name === id (these providers don't ship a
+ * display name distinct from the id).
+ */
+function parseOpenAIShapeChatOnly(json) {
+  const data = Array.isArray(json?.data) ? json.data : [];
+  return data
+    .filter(m => typeof m.id === 'string' && m.id.length > 0)
+    .map(m => ({ id: m.id, name: m.id }));
+}
+
+export function parseGroqModels(json)     { return parseOpenAIShapeChatOnly(json); }
+export function parseCerebrasModels(json) { return parseOpenAIShapeChatOnly(json); }
+export function parseMistralModels(json)  { return parseOpenAIShapeChatOnly(json); }
+export function parseDeepSeekModels(json) { return parseOpenAIShapeChatOnly(json); }
+
+async function fetchGroqModels(apiKey) {
+  const res = await fetch('https://api.groq.com/openai/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Groq');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from Groq — use Custom… to enter a model ID manually'); }
+  return parseGroqModels(json);
+}
+
+async function fetchCerebrasModels(apiKey) {
+  const res = await fetch('https://api.cerebras.ai/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Cerebras');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from Cerebras — use Custom… to enter a model ID manually'); }
+  return parseCerebrasModels(json);
+}
+
+async function fetchMistralModels(apiKey) {
+  const res = await fetch('https://api.mistral.ai/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Mistral');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from Mistral — use Custom… to enter a model ID manually'); }
+  return parseMistralModels(json);
+}
+
+async function fetchDeepSeekModels(apiKey) {
+  const res = await fetch('https://api.deepseek.com/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'DeepSeek');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from DeepSeek — use Custom… to enter a model ID manually'); }
+  return parseDeepSeekModels(json);
+}
+
+// ─── Together ─────────────────────────────────────────────────────
+
+/**
+ * Parses Together's GET /v1/models response into [{id, name}].
+ * Together returns either {data: [...]} or a bare array (varies by API
+ * version). Filter to entries whose type === 'chat'. Prefers display_name
+ * over id for the visible name.
+ */
+export function parseTogetherModels(json) {
+  let list;
+  if (Array.isArray(json)) list = json;
+  else if (Array.isArray(json?.data)) list = json.data;
+  else list = [];
+  return list
+    .filter(m => m.type === 'chat' && typeof m.id === 'string' && m.id.length > 0)
+    .map(m => ({ id: m.id, name: m.display_name || m.id }));
+}
+
+async function fetchTogetherModels(apiKey) {
+  const res = await fetch('https://api.together.xyz/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'Together AI');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from Together AI — use Custom… to enter a model ID manually'); }
+  return parseTogetherModels(json);
+}
+
+// ─── OpenRouter ───────────────────────────────────────────────────
+
+/**
+ * Parses OpenRouter's GET /api/v1/models response into [{id, name}].
+ * Filters to text-only chat models (architecture.modality === 'text->text').
+ */
+export function parseOpenRouterModels(json) {
+  const data = Array.isArray(json?.data) ? json.data : [];
+  return data
+    .filter(m => {
+      if (!m || !m.architecture || typeof m.architecture !== 'object') return false;
+      if (typeof m.id !== 'string' || m.id.length === 0) return false;
+      const mod = m.architecture.modality;
+      // Accept any modality whose output is text. Drops text->image and
+      // image->image (image gen). Keeps text->text, text+image->text,
+      // text+image+audio->text — and also audio->text (whisper-style
+      // transcription); we accept that minor false-positive to avoid
+      // dropping the majority of vision-capable chat models. Users can
+      // always use Custom… if a wrong entry slips through.
+      return typeof mod === 'string' && mod.endsWith('->text');
+    })
+    .map(m => ({ id: m.id, name: m.name || m.id }));
+}
+
+async function fetchOpenRouterModels(apiKey) {
+  const res = await fetch('https://openrouter.ai/api/v1/models', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw httpError(res, 'OpenRouter');
+  let json;
+  try { json = await res.json(); }
+  catch { throw new Error('Unexpected response from OpenRouter — use Custom… to enter a model ID manually'); }
+  return parseOpenRouterModels(json);
+}
+
+// ─── Dispatcher ───────────────────────────────────────────────────
+
+/**
+ * Routes a model-listing request to the right provider's listModels.
+ * Throws with a helpful message for unknown providers or providers
+ * we haven't yet implemented listModels for.
+ */
+export async function listProviderModels(providerId, apiKey) {
+  const config = PROVIDERS[providerId];
+  if (!config) {
+    throw new Error(`Unknown provider: ${providerId}`);
+  }
+  if (typeof config.listModels !== 'function') {
+    throw new Error(`${config.name} does not support model listing yet`);
+  }
+  return config.listModels(apiKey);
+}
 
 // ─── Main AI call router with retry ─────────────────────────────────
 

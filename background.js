@@ -63,7 +63,8 @@ import {
   buildTestPrompt,          // Builds a minimal "ping" prompt used to validate AI connectivity
   DEFAULT_MODEL,        // Fallback model identifier when the user has not configured one
   DEFAULT_TEMPERATURE,  // Fallback temperature value (typically 0 or 0.7)
-  DEFAULT_PROVIDER      // Fallback provider id (e.g. 'openai')
+  DEFAULT_PROVIDER,     // Fallback provider id (e.g. 'openai')
+  listProviderModels,   // Fetches the live model list for a given provider
 } from './aiService.js';
 
 // Rule-based matcher that resolves common dropdown questions without an AI call
@@ -1041,6 +1042,48 @@ async function handleBuildCoverLetterFile(msg) {
   };
 }
 
+/**
+ * Fetches the live model list from the given provider and persists it to
+ * chrome.storage.local under aiModels.<providerId>. Returns the list plus
+ * metadata so the page can repopulate the dropdown and ignore stale
+ * responses if the user changed providers mid-fetch.
+ *
+ * Input message shape:
+ *   { provider: string, apiKey: string }
+ *
+ * Output: { models: [{id, name}], fetchedAt: ISO string, providerId: string }
+ */
+async function handleListModels(msg) {
+  const { provider, apiKey } = msg;
+  if (!provider || typeof provider !== 'string') {
+    throw new Error('Provider id is required');
+  }
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error('API key is required to refresh models');
+  }
+
+  const models = await listProviderModels(provider, apiKey.trim());
+  const fetchedAt = new Date().toISOString();
+
+  // Read-modify-write of `aiModels` is not atomic — if two refresh clicks
+  // for different providers race (e.g. two tabs of profile.html open),
+  // one's write could clobber the other. Worst case is one provider's
+  // cached list is dropped and the user must Refresh again. Acceptable
+  // trade-off vs. a locking primitive given Chrome's storage API has no
+  // native atomic update.
+  const existing = (await chrome.storage.local.get('aiModels')).aiModels || {};
+  const next = { ...existing, [provider]: { models, fetchedAt } };
+  try {
+    await chrome.storage.local.set({ aiModels: next });
+  } catch (e) {
+    // chrome.storage.local.set rarely fails (only on quota exceeded —
+    // 10MB cap, which aiModels won't approach). Log and continue: the
+    // fresh list still applies to this page session.
+    console.warn('[refresh-models] aiModels persist failed:', e?.message || e);
+  }
+  return { models, fetchedAt, providerId: provider };
+}
+
 // ── Handler registry ──────────────────────────────────────────────────────
 // Maps message type strings to handler functions. Replaces the former switch
 // statement for cleaner routing and easier extensibility.
@@ -1050,6 +1093,8 @@ const handlers = {
   // These handlers all result in at least one HTTP call to an external AI API.
 
   'TEST_CONNECTION': (msg) => handleTestConnection(),
+
+  'LIST_MODELS': (msg) => handleListModels(msg),
 
   'PARSE_RESUME': (msg) => handleParseResume(msg.rawText),
 

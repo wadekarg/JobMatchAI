@@ -567,6 +567,41 @@
       padding: 10px 4px; font-size: 13px; font-weight: 700;
     }
     .score-dist-bar small { display: block; font-size: 10px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
+
+    /* Refresh-models row: dropdown + refresh button side by side */
+    .model-row {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .model-row select { flex: 1; }
+    .icon-btn {
+      background: none;
+      border: 1px solid var(--jm-border);
+      border-radius: 4px;
+      padding: 0 10px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      color: var(--jm-text-secondary);
+    }
+    .icon-btn:hover:not(:disabled) { background: var(--jm-hover-bg); }
+    .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .icon-btn:focus-visible {
+      outline: 2px solid var(--jm-primary);
+      outline-offset: 2px;
+    }
+    .icon-btn.spinning { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .refresh-status {
+      font-size: 12px;
+      margin-top: 4px;
+      min-height: 16px;
+      color: var(--jm-text-secondary);
+    }
+    .refresh-status.error   { color: #b91c1c; }
+    .refresh-status.success { color: #15803d; }
+    #sModelCustom { margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -756,9 +791,21 @@
         <div class="settings-row">
           <div>
             <label>Model</label>
-            <select id="sModel">
-              <option value="">Loading models...</option>
-            </select>
+            <div class="model-row">
+              <select id="sModel">
+                <option value="">Loading models...</option>
+              </select>
+              <button type="button" id="refreshModelsBtn" class="icon-btn"
+                      title="Refresh models from provider"
+                      aria-label="Refresh models from provider"
+                      aria-controls="sModel sModelCustom">
+                &#x21BB;
+              </button>
+            </div>
+            <input type="text" id="sModelCustom"
+                   placeholder="e.g. claude-opus-4-20260601"
+                   hidden>
+            <div class="refresh-status" id="refreshStatus" aria-live="polite"></div>
           </div>
           <div>
             <label>Temperature: <span id="tempValue">0.3</span></label>

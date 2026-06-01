@@ -1180,51 +1180,219 @@ function populateProviderDropdown(providers) {
 /**
  * Updates the model dropdown, API key placeholder, and provider hint text
  * whenever the selected provider changes.
- * Attempts to preserve the previously selected model ID if it exists in the new
- * provider's model list; falls back to the provider's default or first model.
+ * Prefers cached fetched models (from aiModels.<providerId>) over the curated
+ * list; appends a "Custom…" option; restores the previous selection.
  *
  * @param {string} providerId - The provider ID key from the registry.
+ * @returns {Promise<void>}
  */
-function updateProviderUI(providerId) {
+async function updateProviderUI(providerId, desiredModelId) {
   const config = providerData[providerId];
   if (!config) return;
 
-  // Rebuild the model dropdown for the new provider
-  const modelSelect  = document.getElementById('sModel');
-  const currentModel = modelSelect.value; // save before clearing
+  const modelSelect = document.getElementById('sModel');
+  const customInput = document.getElementById('sModelCustom');
+  const refreshBtn  = document.getElementById('refreshModelsBtn');
+
+  // Determine which model to restore after rebuilding the dropdown.
+  // - If caller passed a desiredModelId (e.g. from saved settings on init),
+  //   use that — caller knows best.
+  // - Otherwise, capture whatever is currently selected (could be Custom…
+  //   with a typed value, or a dropdown id).
+  const currentModel = desiredModelId
+    ? String(desiredModelId)
+    : (customInput && !customInput.hidden && customInput.value.trim())
+      ? customInput.value.trim()
+      : modelSelect.value;
+
+  // Reset Custom… state for the new provider.
+  if (customInput) { customInput.hidden = true; customInput.value = ''; }
+
+  // Prefer cached fetched models over the curated list.
+  let cached = null;
+  try {
+    const stored = await chrome.storage.local.get('aiModels');
+    cached = stored.aiModels?.[providerId]?.models || null;
+  } catch (_) { /* ignore — fall back to curated */ }
+
+  const models = (cached && cached.length) ? cached : (config.models || []);
+
   modelSelect.innerHTML = '';
-  (config.models || []).forEach(m => {
+  models.forEach(m => {
     const opt = document.createElement('option');
     opt.value       = m.id;
     opt.textContent = m.name;
     modelSelect.appendChild(opt);
   });
-  // Preserve current selection if valid for new provider, else use default
-  if (config.models.some(m => m.id === currentModel)) {
+
+  // Always append Custom… last.
+  const customOpt = document.createElement('option');
+  customOpt.value       = '__custom__';
+  customOpt.textContent = 'Custom…';
+  modelSelect.appendChild(customOpt);
+
+  // Restore selection. If the previous model isn't in the new list,
+  // try Custom… with that value pre-filled.
+  if (models.some(m => m.id === currentModel)) {
     modelSelect.value = currentModel;
+  } else if (currentModel && currentModel !== '__custom__') {
+    // Not in the list — surface as Custom… with the value pre-filled.
+    modelSelect.value = '__custom__';
+    if (customInput) {
+      customInput.hidden = false;
+      customInput.value  = currentModel;
+    }
   } else {
-    // Optional chaining handles providers with an empty models array gracefully
-    modelSelect.value = config.defaultModel || config.models[0]?.id || '';
+    modelSelect.value = config.defaultModel || models[0]?.id || '';
   }
 
-  // Update the API key input placeholder to show the expected key format
+  // Update API key placeholder + hint (PRESERVED from the original updateProviderUI).
   document.getElementById('sApiKey').placeholder = config.keyPlaceholder || 'Enter API key...';
-
-  // Update the informational hint below the provider dropdown with a clickable link
   const hintEl = document.getElementById('providerHint');
   if (hintEl) {
     if (config.keyUrl) {
       const freeBadge = config.free ? ' — Free tier' : '';
       hintEl.innerHTML = `<a href="${config.keyUrl}" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:none;">Get your API key here &rarr;</a>${freeBadge}`;
     } else {
-      hintEl.textContent = config.hint || '';
+      hintEl.innerHTML = config.hint || '';
     }
   }
+
+  // Enable/disable the refresh button based on whether an API key is set.
+  if (refreshBtn) refreshBtn.disabled = !document.getElementById('sApiKey').value.trim();
+
+  // Clear any stale refresh-status message when switching providers.
+  const status = document.getElementById('refreshStatus');
+  if (status) { status.textContent = ''; status.className = 'refresh-status'; }
 }
 
 /** Refresh the model list and UI hints whenever the provider selection changes. */
-document.getElementById('sProvider').addEventListener('change', (e) => {
-  updateProviderUI(e.target.value);
+document.getElementById('sProvider').addEventListener('change', async (e) => {
+  const requestedProvider = e.target.value;
+  await updateProviderUI(requestedProvider);
+  // Race-condition defense: if the user changed providers again while
+  // updateProviderUI's await for chrome.storage.local.get was pending,
+  // the latest invocation will win — nothing to do here. (We capture
+  // the requested provider purely for clarity.)
+});
+
+/** Show/hide the Custom… text input when the model dropdown selection changes. */
+document.getElementById('sModel').addEventListener('change', (e) => {
+  const customInput = document.getElementById('sModelCustom');
+  if (!customInput) return;
+  if (e.target.value === '__custom__') {
+    customInput.hidden = false;
+    customInput.focus();
+  } else {
+    customInput.hidden = true;
+    customInput.value = '';
+  }
+});
+
+/** Enable/disable the refresh button when the API key field is edited. */
+document.getElementById('sApiKey').addEventListener('input', () => {
+  const refreshBtn = document.getElementById('refreshModelsBtn');
+  if (refreshBtn) refreshBtn.disabled = !document.getElementById('sApiKey').value.trim();
+});
+
+/** 🔄 Refresh models button: fetches live models and rebuilds the dropdown. */
+document.getElementById('refreshModelsBtn').addEventListener('click', async () => {
+  const refreshBtn  = document.getElementById('refreshModelsBtn');
+  const modelSelect = document.getElementById('sModel');
+  const customInput = document.getElementById('sModelCustom');
+  const status      = document.getElementById('refreshStatus');
+  const providerId  = document.getElementById('sProvider').value;
+  const apiKey      = document.getElementById('sApiKey').value.trim();
+
+  if (!apiKey) {
+    status.textContent = 'Set an API key first';
+    status.className   = 'refresh-status error';
+    return;
+  }
+
+  refreshBtn.disabled = true;
+  refreshBtn.classList.add('spinning');
+  status.textContent = '';
+  status.className   = 'refresh-status';
+
+  try {
+    const result = await sendMessage({ type: 'LIST_MODELS', provider: providerId, apiKey });
+
+    // Race-condition defense: drop the response if the user changed providers mid-fetch.
+    if (!result || result.providerId !== document.getElementById('sProvider').value) {
+      return;
+    }
+
+    const models = result.models || [];
+
+    // Save current selection (including Custom…) before re-rendering.
+    const wasCustom  = modelSelect.value === '__custom__';
+    const previousId = wasCustom ? (customInput.value || '').trim() : modelSelect.value;
+
+    modelSelect.innerHTML = '';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value       = m.id;
+      opt.textContent = m.name;
+      modelSelect.appendChild(opt);
+    });
+    const customOpt = document.createElement('option');
+    customOpt.value       = '__custom__';
+    customOpt.textContent = 'Custom…';
+    modelSelect.appendChild(customOpt);
+
+    // Try to restore the prior selection.
+    let switchedAwayFrom = null;
+    const wasManualCustom = wasCustom && previousId && !models.some(m => m.id === previousId);
+
+    if (models.some(m => m.id === previousId)) {
+      // Prior id still exists in the refreshed list.
+      modelSelect.value   = previousId;
+      customInput.hidden  = true;
+      customInput.value   = '';
+    } else if (wasManualCustom) {
+      // User had typed a custom id — preserve it (manual entry is the
+      // escape hatch from the refreshed list, not a fallback for stale
+      // dropdown selections).
+      modelSelect.value   = '__custom__';
+      customInput.hidden  = false;
+      customInput.value   = previousId;
+    } else {
+      // Previously-selected dropdown id is no longer in the refreshed
+      // list — fall back to default and tell the user we switched.
+      const config = providerData[providerId];
+      const fallback = config?.defaultModel || models[0]?.id || '';
+      modelSelect.value   = fallback;
+      customInput.hidden  = true;
+      customInput.value   = '';
+      if (previousId && previousId !== fallback) switchedAwayFrom = previousId;
+    }
+
+    if (models.length === 0) {
+      status.textContent = 'No chat models found — use Custom… to enter a model ID manually';
+      status.className   = 'refresh-status error';
+    } else {
+      const providerName = providerData[providerId]?.name || providerId;
+      let msg = `Refreshed ${models.length} models from ${providerName}`;
+      if (switchedAwayFrom) {
+        msg += `. "${switchedAwayFrom}" is no longer available — switched to ${modelSelect.value}.`;
+      }
+      status.textContent = msg;
+      status.className   = 'refresh-status success';
+      setTimeout(() => {
+        if (status.classList.contains('success')) {
+          status.textContent = '';
+          status.className   = 'refresh-status';
+        }
+      }, 3000);
+    }
+  } catch (err) {
+    status.textContent = (err && err.message) || 'Could not refresh models';
+    status.className   = 'refresh-status error';
+  } finally {
+    refreshBtn.disabled = !document.getElementById('sApiKey').value.trim();
+    refreshBtn.classList.remove('spinning');
+  }
 });
 
 /**
@@ -1283,10 +1451,27 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async () =>
  * Called both from the save button and pre-emptively before a connection test.
  */
 async function saveSettings() {
+  const modelSelect = document.getElementById('sModel');
+  const customInput = document.getElementById('sModelCustom');
+  const model = (modelSelect.value === '__custom__')
+    ? (customInput.value || '').trim()
+    : modelSelect.value;
+
+  if (!model) {
+    // Surface inline rather than silently save an empty string.
+    const result = document.getElementById('testResult');
+    if (result) {
+      result.textContent = 'Model is required — pick one from the dropdown or use Custom… to enter an ID';
+      result.className   = 'test-result error';
+      result.style.display = 'block';
+    }
+    return;
+  }
+
   const settings = {
     provider:    document.getElementById('sProvider').value,
     apiKey:      document.getElementById('sApiKey').value.trim(),
-    model:       document.getElementById('sModel').value,
+    model,
     temperature: parseFloat(document.getElementById('sTemp').value)
   };
   await sendMessage({ type: 'SAVE_SETTINGS', settings });
@@ -1388,10 +1573,13 @@ async function init() {
     if (settings) {
       // Apply stored settings to the form; fall back to sensible defaults if missing
       document.getElementById('sProvider').value = settings.provider || 'anthropic';
-      // updateProviderUI must run after the provider is set so the model list is correct
-      updateProviderUI(settings.provider || 'anthropic');
       document.getElementById('sApiKey').value  = settings.apiKey || '';
-      document.getElementById('sModel').value   = settings.model  || 'claude-sonnet-4-20250514';
+      // updateProviderUI must run after both provider and apiKey are set so the
+      // model list, refresh button state, and selection restore are all correct.
+      // It is now async — await so the dropdown is populated before we continue.
+      await updateProviderUI(settings.provider || 'anthropic', settings.model);
+      // NOTE: sModel.value is now restored by updateProviderUI (cached-first + restore
+      // logic), so the previous explicit assignment is no longer needed here.
       // Nullish coalescing: treat null/undefined as 0.3, but allow stored 0
       document.getElementById('sTemp').value    = settings.temperature ?? 0.3;
       tempValue.textContent                      = settings.temperature ?? 0.3;
