@@ -1098,6 +1098,52 @@
         overflow-y: auto;
         margin-bottom: 8px;
       }
+      /* Action button group inside a section head (Copy + Download dropdown) */
+      .jm-section-head-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      /* Download dropdown — sits to the right of the Copy button */
+      .jm-download-wrap {
+        position: relative;
+        display: inline-block;
+      }
+      .jm-download-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        min-width: 120px;
+        margin-top: 4px;
+        background: var(--jm-bg);
+        border: 1px solid var(--jm-border);
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10;
+        padding: 4px 0;
+      }
+      .jm-download-menu[hidden] {
+        display: none;
+      }
+      .jm-download-item {
+        display: block;
+        width: 100%;
+        padding: 8px 12px;
+        text-align: left;
+        background: none;
+        border: none;
+        color: var(--jm-text);
+        cursor: pointer;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .jm-download-item:hover:not(:disabled) {
+        background: var(--jm-hover-bg);
+      }
+      .jm-download-item:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .jm-copy-btn {
         font-size: 12px;
         padding: 5px 12px;
@@ -1646,7 +1692,16 @@
         <div class="jm-section" id="jmCoverLetterSection" style="display:none">
           <div class="jm-section-head">
             <h3>Cover Letter</h3>
-            <button class="jm-btn jm-btn-secondary jm-copy-btn" id="jmCopyCoverLetter">Copy</button>
+            <div class="jm-section-head-actions">
+              <button class="jm-btn jm-btn-secondary jm-copy-btn" id="jmCopyCoverLetter">Copy</button>
+              <div class="jm-download-wrap">
+                <button class="jm-btn jm-btn-secondary" id="jmDownloadCoverLetter" type="button" aria-haspopup="menu" aria-expanded="false">Download &#9662;</button>
+                <div class="jm-download-menu" id="jmDownloadCoverLetterMenu" role="menu" hidden>
+                  <button class="jm-download-item" type="button" data-fmt="docx" role="menuitem">.docx</button>
+                  <button class="jm-download-item" type="button" data-fmt="pdf"  role="menuitem">.pdf</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="jm-cover-letter" id="jmCoverLetterText"></div>
         </div>
@@ -1760,6 +1815,61 @@
         setTimeout(() => { btn.textContent = orig; }, 1500);
       }).catch(() => {});
     });
+
+    // ── Cover letter Download dropdown ──
+    const downloadBtn  = panel.querySelector('#jmDownloadCoverLetter');
+    const downloadMenu = panel.querySelector('#jmDownloadCoverLetterMenu');
+
+    function closeDownloadMenu() {
+      if (!downloadMenu) return;
+      downloadMenu.hidden = true;
+      downloadBtn.setAttribute('aria-expanded', 'false');
+    }
+    function openDownloadMenu() {
+      if (!downloadMenu) return;
+      downloadMenu.hidden = false;
+      downloadBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    if (downloadBtn && downloadMenu) {
+      downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (downloadMenu.hidden) openDownloadMenu();
+        else closeDownloadMenu();
+      });
+
+      // Outside-click closes the menu. We listen on the shadow root so we
+      // only see clicks inside our shadow DOM — page clicks come through as
+      // a separate event on document, which is fine since they don't
+      // intersect with the menu's coordinates anyway.
+      shadowRoot.addEventListener('mousedown', (e) => {
+        if (downloadMenu.hidden) return;
+        if (!e.composedPath().includes(downloadBtn) &&
+            !e.composedPath().includes(downloadMenu)) {
+          closeDownloadMenu();
+        }
+      });
+
+      // Escape closes and returns focus to the trigger.
+      downloadMenu.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeDownloadMenu(); downloadBtn.focus(); }
+      });
+      downloadBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !downloadMenu.hidden) {
+          closeDownloadMenu();
+        }
+      });
+
+      panel.querySelectorAll('.jm-download-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const fmt = item.dataset.fmt;
+          if (fmt === 'docx' || fmt === 'pdf') {
+            downloadCoverLetter(fmt);
+          }
+        });
+      });
+    }
+
     panel.querySelector('#jmNotesInput').addEventListener('blur', saveJobNotes);
     panel.querySelector('#jmNotesInput').addEventListener('input', saveJobNotes);
 
@@ -4124,6 +4234,91 @@
 
 
   // ─── Cover letter ─────────────────────────────────────────────
+
+  /**
+   * Format a Date as "May 11, 2026" — used in the cover-letter file body.
+   */
+  function formatLongDate(d) {
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  /**
+   * Join the user's present contact fields with " · " for the cover-letter
+   * letterhead. Empty fields are skipped — the line is omitted entirely if
+   * every field is empty.
+   */
+  function buildContactLine(profile) {
+    if (!profile) return '';
+    const fields = [profile.email, profile.phone, profile.linkedin, profile.location, profile.website];
+    return fields.map(f => (f || '').trim()).filter(Boolean).join(' · ');
+  }
+
+  /**
+   * Builds and downloads the cover letter as either .docx or .pdf.
+   * Returns silently on success (browser download chrome appears).
+   * On error, surfaces via setStatus().
+   */
+  async function downloadCoverLetter(format) {
+    const text = (shadowRoot.getElementById('jmCoverLetterText')?.textContent || '').trim();
+    if (!text)                  { setStatus('Cover letter is empty', 'error'); return; }
+    if (!currentAnalysis)       { setStatus('Generate the cover letter first', 'error'); return; }
+
+    const downloadBtn  = shadowRoot.getElementById('jmDownloadCoverLetter');
+    const items        = shadowRoot.querySelectorAll('.jm-download-item');
+    const originalLabel = downloadBtn ? downloadBtn.innerHTML : '';
+
+    // Disable while building
+    if (downloadBtn) { downloadBtn.disabled = true; downloadBtn.innerHTML = '<span class="jm-spinner"></span> Working...'; }
+    items.forEach(i => { i.disabled = true; });
+
+    try {
+      const profile = await sendMessage({ type: 'GET_PROFILE' });
+      const result  = await sendMessage({
+        type:    'BUILD_COVER_LETTER_FILE',
+        format,
+        text,
+        header:  {
+          name:        (profile?.name || '').trim(),
+          contactLine: buildContactLine(profile),
+        },
+        today:   formatLongDate(new Date()),
+        jobMeta: {
+          company: currentAnalysis.company || '',
+          title:   currentAnalysis.title   || '',
+        },
+      });
+
+      if (!result || !result.bytesBase64) {
+        throw new Error('No bytes returned from background');
+      }
+
+      // chrome.runtime.sendMessage JSON-serializes the envelope, so the
+      // background hands us bytes as a base64 string. Decode into a real
+      // Uint8Array so the Blob contains binary, not "[object Object]".
+      const binary = atob(result.bytesBase64);
+      const bytes  = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      const blob = new Blob([bytes], { type: result.mime });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke after a tick so the browser has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setStatus('Could not generate cover letter file: ' + (err?.message || err), 'error');
+    } finally {
+      if (downloadBtn) { downloadBtn.disabled = false; downloadBtn.innerHTML = originalLabel; }
+      items.forEach(i => { i.disabled = false; });
+      // Close menu after action (mirrors success and error paths).
+      const menu = shadowRoot.getElementById('jmDownloadCoverLetterMenu');
+      if (menu) { menu.hidden = true; downloadBtn?.setAttribute('aria-expanded', 'false'); }
+    }
+  }
 
   /**
    * Generates a tailored cover letter for the current job via the AI and

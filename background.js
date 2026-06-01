@@ -47,6 +47,7 @@
 // ─── Imports ────────────────────────────────────────────────────────────────
 
 import JSZip from './libs/jszip.esm.js';
+import { jsPDF } from './libs/jspdf.es.min.js';
 import {
   callAI,           // Core function that sends a message array to the chosen AI provider
   PROVIDERS,        // Array of supported provider descriptors (id, name, models, …)
@@ -79,6 +80,11 @@ import {
   normalizeForMatch,
   replaceBulletsInDocXml,
 } from './lib/docxBullets.mjs';
+
+// Cover-letter file generation — pure builders + filename sanitizer.
+import { buildCoverLetterFilename } from './lib/coverLetterFilename.mjs';
+import { buildCoverLetterDocxParts } from './lib/coverLetterDocx.mjs';
+import { populateCoverLetterPdf } from './lib/coverLetterPdf.mjs';
 
 // Pure helpers for the H1B lookup cache (TTL check + LRU eviction). The
 // chrome.storage.local I/O lives below; these stay testable in isolation.
@@ -935,22 +941,106 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 /**
- * Routes an incoming extension message to the appropriate handler function.
+ * Builds either a .docx or .pdf cover-letter file from raw text + letterhead
+ * input. Returns the bytes (+ mime + final filename) for the content script
+ * to wrap in a Blob and trigger a download.
  *
- * Messages are identified by `message.type` (a string constant).  The switch
- * is grouped into four logical sections:
- *   - AI operations   : tasks that require an LLM API call
- *   - Storage ops     : direct read/write of chrome.storage.local
- *   - Job management  : saved & applied job CRUD + cover letter / bullet rewrite
- *   - Tab forwarding  : relay messages from popup to the active content script
+ * Pure builders live in lib/coverLetter{Filename,Docx,Pdf}.mjs; this function
+ * is only the integration layer that wraps JSZip / jsPDF and applies the
+ * cover-letter-shape contract.
  *
- * @async
- * @param {Object} message - The message object sent by the caller.
- * @param {string} message.type - Discriminant string identifying the operation.
- * @param {Object} sender  - Chrome MessageSender describing the originating context.
- * @throws {Error} For unknown message types or when handler prerequisites fail.
- * @returns {Promise<*>} The result value produced by the matched handler.
+ * Input message shape:
+ *   {
+ *     format: 'docx' | 'pdf',
+ *     text:        string, // raw cover-letter body, paragraphs separated by \n\n
+ *     header:      { name, contactLine },
+ *     today:       string, // e.g. "May 11, 2026" — used in the file body
+ *     jobMeta:     { company, title }, // used to build the filename
+ *   }
  */
+/**
+ * Base64-encode a Uint8Array. We can't return a Uint8Array directly through
+ * chrome.runtime.sendMessage — the message envelope is JSON-serialized, which
+ * turns a Uint8Array into a plain object like {"0": 80, "1": 75, ...}. The
+ * content script would then see `[object Object]` when wrapped in a Blob.
+ * Base64 is JSON-safe and round-trips cleanly via atob() in content.js.
+ *
+ * Chunks through String.fromCharCode to avoid a stack overflow on large
+ * buffers (apply() argument-count limits in V8 are ~64k).
+ */
+function uint8ArrayToBase64(u8) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < u8.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function handleBuildCoverLetterFile(msg) {
+  const { format, text, header, today, jobMeta } = msg;
+  if (format !== 'docx' && format !== 'pdf') {
+    throw new Error(`Unsupported format: ${format}`);
+  }
+  if (!text || !text.trim()) {
+    throw new Error('Cover letter text is empty');
+  }
+
+  const paragraphs = String(text).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+
+  const fullName    = (header?.name || '').trim();
+  const companyName = (jobMeta?.company || '').trim();
+
+  // Recipient block: "Hiring Manager" + the company name (if we have one).
+  // Caller doesn't supply a specific hiring-manager name today; the generic
+  // "Hiring Manager" is the safe default that matches the salutation.
+  const recipient = ['Hiring Manager'];
+  if (companyName) recipient.push(companyName);
+
+  const builderInput = {
+    name:        fullName,
+    contactLine: header?.contactLine || '',
+    today:       today || '',
+    recipient,
+    salutation:  'Dear Hiring Manager,',
+    paragraphs,
+    signOff:     'Sincerely,',
+    signature:   fullName,
+  };
+
+  const dateObj = new Date();
+  const filename = buildCoverLetterFilename(
+    jobMeta?.company || '',
+    jobMeta?.title   || '',
+    dateObj,
+    format,
+  );
+
+  if (format === 'docx') {
+    const parts = buildCoverLetterDocxParts(builderInput);
+    const zip = new JSZip();
+    for (const [path, xml] of Object.entries(parts)) {
+      zip.file(path, xml);
+    }
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    return {
+      bytesBase64: uint8ArrayToBase64(bytes),
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      filename,
+    };
+  }
+
+  // format === 'pdf'
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  populateCoverLetterPdf(doc, builderInput);
+  const bytes = new Uint8Array(doc.output('arraybuffer'));
+  return {
+    bytesBase64: uint8ArrayToBase64(bytes),
+    mime: 'application/pdf',
+    filename,
+  };
+}
+
 // ── Handler registry ──────────────────────────────────────────────────────
 // Maps message type strings to handler functions. Replaces the former switch
 // statement for cleaner routing and easier extensibility.
@@ -1008,6 +1098,7 @@ const handlers = {
   'GET_SAVED_JOBS': (msg) => getSavedJobs(),
 
   'GENERATE_COVER_LETTER': (msg) => handleGenerateCoverLetter(msg.jobDescription, msg.analysis, msg.jobMeta),
+  'BUILD_COVER_LETTER_FILE': (msg) => handleBuildCoverLetterFile(msg),
 
   'REWRITE_BULLETS': (msg) => handleRewriteBullets(msg.jobDescription, msg.missingSkills),
 
@@ -1096,6 +1187,26 @@ const handlers = {
   },
 };
 
+/**
+ * Routes an incoming extension message to the appropriate handler function
+ * and wraps the result in a uniform `{ success, data }` / `{ success, error }`
+ * envelope.
+ *
+ * Messages arrive via chrome.runtime.onMessage from three sources:
+ *   1. The popup (popup.html + popup.js) — uses chrome.runtime.sendMessage.
+ *   2. The profile page (profile.html + profile.js) — same path.
+ *   3. Content scripts — chrome.runtime.sendMessage targets the worker.
+ *
+ * Each message has a `type` string and a handler in the `handlers` map (which
+ * replaced an earlier switch statement). Handlers may be async; their return
+ * value lands in `data` on success, and any thrown error lands in `error`.
+ *
+ * @async
+ * @param {Object} message      The full message object sent from the caller.
+ * @param {string} message.type Discriminator string (e.g. 'GET_PROFILE', 'TOGGLE_PANEL').
+ * @returns {Promise<{success: true, data: *}|{success: false, error: string}>}
+ *   Uniform response envelope.
+ */
 async function handleMessage(message, sender) {
   const handler = handlers[message.type];
   if (!handler) throw new Error(`Unknown message type: ${message.type}`);
