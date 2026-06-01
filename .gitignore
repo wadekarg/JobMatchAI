@@ -4,3 +4,7 @@ node_modules/
 .idea/
 coverage/
 *.log
+
+# Internal design + implementation docs from the brainstorming / writing-plans
+# skills. Local-only — these are dev scaffolding, not for the public repo.
+docs/superpowers/
