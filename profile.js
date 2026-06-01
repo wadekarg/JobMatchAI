@@ -1178,6 +1178,18 @@ function populateProviderDropdown(providers) {
 }
 
 /**
+ * Show the "Clear saved keys" link only when aiSettings.keys has at
+ * least one entry. Called from init() and after each successful Save.
+ */
+async function updateClearKeysVisibility() {
+  const link = document.getElementById('clearSavedKeysBtn');
+  if (!link) return;
+  const stored = await chrome.storage.local.get('aiSettings');
+  const count  = Object.keys(stored.aiSettings?.keys || {}).length;
+  link.hidden  = count === 0;
+}
+
+/**
  * Updates the model dropdown, API key placeholder, and provider hint text
  * whenever the selected provider changes.
  * Prefers cached fetched models (from aiModels.<providerId>) over the curated
@@ -1270,10 +1282,26 @@ async function updateProviderUI(providerId, desiredModelId) {
 document.getElementById('sProvider').addEventListener('change', async (e) => {
   const requestedProvider = e.target.value;
   await updateProviderUI(requestedProvider);
-  // Race-condition defense: if the user changed providers again while
-  // updateProviderUI's await for chrome.storage.local.get was pending,
-  // the latest invocation will win — nothing to do here. (We capture
-  // the requested provider purely for clarity.)
+  // If the user toggles providers faster than storage can resolve,
+  // two handler invocations race and the last *resolution* wins, not
+  // the last *click*. Worst case is a transient UI mismatch (the field
+  // shows the key for the previous provider). The next change
+  // self-corrects. Acceptable for a settings form — formal locking
+  // would add complexity without protecting against meaningful damage.
+
+  // Auto-fill the API key field with the saved key for this provider
+  // (if any). Empty string is also valid — means the user has explicitly
+  // saved "no key" for this provider.
+  // Shape contract: aiSettings.keys is { [providerId]: string }.
+  // See lib/aiSettingsMigration.mjs — that helper runs inside
+  // getSettings() in background.js and guarantees the field exists.
+  const stored   = await chrome.storage.local.get('aiSettings');
+  const savedKey = stored.aiSettings?.keys?.[requestedProvider] ?? '';
+  const sApiKey  = document.getElementById('sApiKey');
+  sApiKey.value  = savedKey;
+  // Programmatic value-set doesn't fire 'input' — trigger it so the
+  // existing input listener can toggle refreshModelsBtn.disabled.
+  sApiKey.dispatchEvent(new Event('input'));
 });
 
 /** Show/hide the Custom… text input when the model dropdown selection changes. */
@@ -1293,6 +1321,20 @@ document.getElementById('sModel').addEventListener('change', (e) => {
 document.getElementById('sApiKey').addEventListener('input', () => {
   const refreshBtn = document.getElementById('refreshModelsBtn');
   if (refreshBtn) refreshBtn.disabled = !document.getElementById('sApiKey').value.trim();
+});
+
+/** Clear saved keys button: wiping all provider keys after user confirmation. */
+document.getElementById('clearSavedKeysBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  const ok = confirm('Clear all saved API keys? The currently-typed key stays.');
+  if (!ok) return;
+
+  // Read current settings, wipe keys, write back.
+  const stored = await chrome.storage.local.get('aiSettings');
+  const next = { ...(stored.aiSettings || {}), keys: {} };
+  await sendMessage({ type: 'SAVE_SETTINGS', settings: next });
+
+  await updateClearKeysVisibility();
 });
 
 /** 🔄 Refresh models button: fetches live models and rebuilds the dropdown. */
@@ -1468,13 +1510,24 @@ async function saveSettings() {
     return;
   }
 
+  // Read existing per-provider keys so we don't blow them away. The
+  // active key for the current provider is stamped in (or overwritten
+  // by) the just-typed value.
+  const provider    = document.getElementById('sProvider').value;
+  const apiKey      = document.getElementById('sApiKey').value.trim();
+  const stored      = await chrome.storage.local.get('aiSettings');
+  const existingKeys = stored.aiSettings?.keys || {};
+  const keys        = { ...existingKeys, [provider]: apiKey };
+
   const settings = {
-    provider:    document.getElementById('sProvider').value,
-    apiKey:      document.getElementById('sApiKey').value.trim(),
+    provider,
+    apiKey,
     model,
-    temperature: parseFloat(document.getElementById('sTemp').value)
+    temperature: parseFloat(document.getElementById('sTemp').value),
+    keys
   };
   await sendMessage({ type: 'SAVE_SETTINGS', settings });
+  await updateClearKeysVisibility();
 }
 
 // ─── Q&A migration ────────────────────────────────────────────────────────────
@@ -1584,6 +1637,9 @@ async function init() {
       document.getElementById('sTemp').value    = settings.temperature ?? 0.3;
       tempValue.textContent                      = settings.temperature ?? 0.3;
     }
+
+    // Update visibility of the "Clear saved keys" link
+    await updateClearKeysVisibility();
 
     // Pre-load applied jobs so the Applied tab is ready before the user clicks it
     loadAppliedJobs();

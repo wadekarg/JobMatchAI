@@ -574,22 +574,34 @@
       gap: 6px;
       align-items: stretch;
     }
-    .model-row select { flex: 1; }
+    .model-row select { flex: 1; margin-bottom: 0; }
+    /* Match the model dropdown's visual treatment so the refresh button
+       reads as part of the same input row — same border, radius, fill,
+       focus ring. Icon stays a hair larger than body text. */
     .icon-btn {
-      background: none;
+      background: var(--jm-input-bg);
       border: 1px solid var(--jm-border);
-      border-radius: 4px;
-      padding: 0 10px;
+      border-radius: 8px;
+      padding: 0 14px;
       cursor: pointer;
       font-size: 16px;
       line-height: 1;
-      color: var(--jm-text-secondary);
+      color: var(--jm-text);
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, background 0.15s, box-shadow 0.2s;
     }
-    .icon-btn:hover:not(:disabled) { background: var(--jm-hover-bg); }
+    .icon-btn:hover:not(:disabled) {
+      background: var(--jm-hover-bg);
+      border-color: var(--jm-primary);
+    }
     .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .icon-btn:focus-visible {
-      outline: 2px solid var(--jm-primary);
-      outline-offset: 2px;
+      outline: none;
+      border-color: var(--jm-primary);
+      box-shadow: 0 0 0 3px var(--jm-shadow);
     }
     .icon-btn.spinning { animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -601,6 +613,14 @@
     }
     .refresh-status.error   { color: #b91c1c; }
     .refresh-status.success { color: #15803d; }
+    .muted-link {
+      font-size: 11px;
+      color: var(--jm-text-secondary);
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 4px;
+    }
+    .muted-link:hover { text-decoration: underline; }
     #sModelCustom { margin-top: 6px; }
   </style>
 </head>
@@ -786,6 +806,9 @@
           <input type="password" id="sApiKey" placeholder="sk-ant-...">
           <button class="btn btn-secondary btn-sm" id="toggleKeyBtn">Show</button>
         </div>
+        <a href="#" id="clearSavedKeysBtn" class="muted-link" hidden>
+          Clear saved keys
+        </a>
         <div style="height:12px"></div>
 
         <div class="settings-row">

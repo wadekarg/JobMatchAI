@@ -97,6 +97,9 @@ import {
   H1B_CACHE_MAX,
 } from './lib/h1bCache.mjs';
 
+// Migration helper to add the `keys` field for per-provider API key memory.
+import { migrateAiSettings } from './lib/aiSettingsMigration.mjs';
+
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 //
@@ -113,18 +116,20 @@ import {
  * AI handlers from having to handle partial objects.
  *
  * @async
- * @returns {Promise<{provider: string, apiKey: string, model: string, temperature: number}>}
+ * @returns {Promise<{provider: string, apiKey: string, model: string, temperature: number, keys: Object<string, string>}>}
  *   The stored aiSettings object, or a default object if none exists.
  */
 async function getSettings() {
   // Destructure just the 'aiSettings' key from storage to avoid loading the
   // entire storage object into memory.
   const result = await chrome.storage.local.get('aiSettings');
-  return result.aiSettings || {
+  const migrated = migrateAiSettings(result.aiSettings);
+  return migrated || {
     provider: DEFAULT_PROVIDER,
     apiKey: '',
     model: DEFAULT_MODEL,
-    temperature: DEFAULT_TEMPERATURE
+    temperature: DEFAULT_TEMPERATURE,
+    keys: {},
   };
 }
 
@@ -1331,7 +1336,8 @@ chrome.runtime.onInstalled.addListener((details) => {
         provider: DEFAULT_PROVIDER,
         apiKey: '',
         model: DEFAULT_MODEL,
-        temperature: DEFAULT_TEMPERATURE
+        temperature: DEFAULT_TEMPERATURE,
+        keys: {},
       },
       profile: null,                              // No resume uploaded yet
       profileSlots: [null, null, null],           // Three resume slots (multi-profile feature)
