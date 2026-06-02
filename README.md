@@ -1,6 +1,6 @@
 # JobMatch AI
 
-**Smart Chrome Extension for Job Seekers** — Analyze any job posting against your resume, get a match score and skill gap analysis, auto-fill applications, generate cover letters, rewrite and tailor resume bullets, and track every job you apply to.
+**Smart Chrome Extension for Job Seekers** — Analyze any job posting against your resume, check H1B / PERM sponsorship history for the employer, get a match score and skill gap analysis, auto-fill applications, generate cover letters (with `.docx` / `.pdf` export), rewrite and tailor resume bullets, and track every job you apply to.
 
 [![Install from Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install_Free-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/jobmatch-ai-%E2%80%93-smart-resum/pfdlaofmcbmjnljfiembdcadcjjnlcia?hl=en-US)
 
@@ -34,6 +34,19 @@ Upload your resume once. Navigate to any job posting, open the panel, and click 
 - **Recommendations** — specific, actionable advice to improve your fit for that exact role
 
 Results are cached per URL. You get a consistent score every session — click **Re-Analyze** any time to force a fresh evaluation.
+
+---
+
+### Visa & H1B Sponsorship Intelligence
+
+Before you invest time in an application, find out whether the employer actually sponsors work visas — and how often.
+
+- **Sponsorship phrase detection** — automatically scans the job description for phrases like "must be authorized to work without sponsorship" and surfaces them as a clear indicator at the top of the analysis.
+- **Live H1B & PERM data** — for recognized employers, the panel shows real approval / denial counts from public **USCIS** and **DOL OFLC** datasets.
+- **5-year trend chart** — see year-by-year sponsorship volume so you can tell whether it's trending up, holding steady, or has dried up.
+- **One-click H1B history** — the "H1B history" link expands the full record without leaving the panel or visiting external sites.
+
+Especially useful if you're an international candidate filtering down to roles that are realistic to apply to.
 
 ---
 
@@ -72,6 +85,8 @@ Always review filled fields one more time before submitting.
 ### Cover Letter Generator
 
 After analyzing a job, click **Cover Letter** in the panel. A tailored letter is generated from the job description and your resume — written specifically for that role and your background, not a generic template.
+
+Export the finished letter as **`.docx`** or **`.pdf`** with one click, complete with your name, contact details, and a clean letterhead. Edit it inline in the panel before exporting, or click ↻ to regenerate.
 
 <p align="center">
   <img src="screenshots/cover-letter-bullets.png" alt="Cover letter generated in the side panel alongside resume bullet rewriter cards" width="900">
@@ -227,6 +242,12 @@ Supported providers — several with free tiers:
 | DeepSeek | — | [platform.deepseek.com](https://platform.deepseek.com) |
 
 **Tip:** Cerebras, Groq, and Google Gemini have the most generous free tiers. OpenRouter gives access to dozens of free models through a single key.
+
+### Live Model Refresh & Per-Provider Keys
+
+- **🔄 Refresh models** — click the refresh button next to the model dropdown and the extension pulls the provider's **current** model list directly from their `/models` API. No more being stuck on a deprecated model id.
+- **Custom model entry** — every provider has a `Custom…` option so you can paste in any model id the provider supports, including brand-new ones.
+- **Per-provider API key memory** — JobMatch AI remembers one API key per provider. Switching providers auto-fills the right key, so you never have to paste it again. A "Clear saved keys" link in Settings wipes the lot.
 
 ### Getting a Free Key (Cerebras Example)
 
