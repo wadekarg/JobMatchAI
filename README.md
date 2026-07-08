@@ -297,7 +297,7 @@ Navigate to any job posting, click the **★ button** to open the panel, and cli
 - All AI analysis happens via direct API calls from your browser to your chosen provider.
 - No analytics, no tracking, no data collection of any kind.
 
-Full privacy policy: [wadekarg.github.io/JobMatchAI/docs/privacy-policy.html](https://wadekarg.github.io/JobMatchAI/docs/privacy-policy.html)
+Full privacy policy: [wadekarg.github.io/JobMatchAI/privacy-policy.html](https://wadekarg.github.io/JobMatchAI/privacy-policy.html)
 
 ---
 
