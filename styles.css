@@ -20,3 +20,32 @@
     width: 100vw !important;
   }
 }
+
+.jm-why-score {
+  margin-top: 8px;
+  font-size: 13px;
+  text-align: left;
+}
+.jm-why-summary {
+  cursor: pointer;
+  color: #2563eb;
+  font-weight: 500;
+  list-style: none;
+}
+.jm-why-summary::-webkit-details-marker {
+  display: none;
+}
+.jm-why-summary::before {
+  content: "▸ ";
+}
+details[open] .jm-why-summary::before {
+  content: "▾ ";
+}
+.jm-why-content {
+  margin-top: 6px;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 6px;
+  color: #374151;
+  line-height: 1.5;
+}

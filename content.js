@@ -1653,6 +1653,10 @@
         <div class="jm-score-section" id="jmScoreSection">
           <div class="jm-score-circle" id="jmScoreCircle">--</div>
           <div class="jm-score-label">Match Score</div>
+          <details class="jm-why-score" id="jmWhyScore">
+            <summary class="jm-why-summary">Why this score?</summary>
+            <div class="jm-why-content" id="jmWhyContent"></div>
+          </details>
         </div>
 
         <div class="jm-section" id="jmMatchingSection">
@@ -3077,6 +3081,19 @@
     scoreCircle.textContent = score;
     scoreCircle.className = 'jm-score-circle ' + getScoreClass(score);
     scoreSection.style.display = 'block';
+
+    // Why this score
+    const whyEl = shadowRoot.getElementById('jmWhyContent');
+    if (data.insights && (data.insights.strengths || data.insights.gaps)) {
+      let whyHtml = '';
+      if (data.insights.strengths) {
+        whyHtml += `<p><strong>Why it's strong:</strong> ${escapeHTML(data.insights.strengths)}</p>`;
+      }
+      if (data.insights.gaps) {
+        whyHtml += `<p><strong>What's holding it back:</strong> ${escapeHTML(data.insights.gaps)}</p>`;
+      }
+      whyEl.innerHTML = whyHtml;
+    }
 
     // Matching skills
     const matchingSection = shadowRoot.getElementById('jmMatchingSection');
