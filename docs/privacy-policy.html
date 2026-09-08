@@ -8,9 +8,10 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --blue:       #3b82f6;
-      --blue-dark:  #1d4ed8;
-      --blue-light: #eff6ff;
+      /* Ocean palette — same as the extension and the store assets */
+      --blue:       #1D6FB8;
+      --blue-dark:  #0E3F6B;
+      --blue-light: #EAF2FA;
       --green:      #10b981;
       --amber:      #f59e0b;
       --dark:       #0f172a;
@@ -35,7 +36,7 @@
 
     /* ── Hero ──────────────────────────────── */
     .hero {
-      background: #3b82f6;
+      background: linear-gradient(152deg, #2A87D6 0%, #1D6FB8 42%, #0E3F6B 100%);
       color: #fff;
       padding: 28px 24px 24px;
       text-align: center;
@@ -219,7 +220,7 @@
     }
     .flow-step {
       background: var(--blue-light);
-      border: 1px solid #bfdbfe;
+      border: 1px solid #BCD7EE;
       border-radius: 8px;
       padding: 8px 14px;
       font-size: 13px;
@@ -344,7 +345,7 @@
     }
     .hobby-btn:hover { opacity: 0.85; transform: translateY(-1px); }
     .hobby-btn-primary { background: var(--dark); color: #fff; }
-    .hobby-btn-secondary { background: var(--blue-light); color: var(--blue-dark); border: 1px solid #bfdbfe; }
+    .hobby-btn-secondary { background: var(--blue-light); color: var(--blue-dark); border: 1px solid #BCD7EE; }
 
     /* ── Responsive ────────────────────────── */
     @media (max-width: 600px) {
