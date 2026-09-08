@@ -393,8 +393,8 @@
   <div class="features-grid">
     <div class="feature-card">
       <div class="feature-icon">🎯</div>
-      <h3>Match Score</h3>
-      <p>Instantly see how well your resume fits a job — with matching skills, gaps, and keyword analysis.</p>
+      <h3>Transparent Match Score</h3>
+      <p>See how well your resume fits a job — six weighted components, and "Explain this score" shows the evidence behind every point.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🛂</div>
@@ -408,8 +408,13 @@
     </div>
     <div class="feature-card">
       <div class="feature-icon">✍️</div>
-      <h3>Resume Bullet Improver</h3>
-      <p>Rewrite your resume bullets to match each specific job. Control exactly which skills to include.</p>
+      <h3>Resume Improver + Bullet Bank</h3>
+      <p>Rewrite bullets to match each job, and reuse your real bullets from a bank — auto-ingested from your resume, AI-tagged, ranked per posting.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">💼</div>
+      <h3>LinkedIn Profile Optimizer</h3>
+      <p>Import your profile via LinkedIn's own "Save to PDF" or data export and get per-section, per-role suggestions. Never touches linkedin.com.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">📄</div>
@@ -423,8 +428,8 @@
     </div>
     <div class="feature-card">
       <div class="feature-icon">📌</div>
-      <h3>Job Tracker</h3>
-      <p>Save jobs, mark as applied, add notes — all tracked without leaving your browser.</p>
+      <h3>Job Tracker with Insights</h3>
+      <p>Every analysis saved automatically, applied auto-detection, statuses, notes, follow-ups, priorities — plus callback and source insights, and CSV export.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🤖</div>
@@ -433,8 +438,8 @@
     </div>
     <div class="feature-card">
       <div class="feature-icon">🎨</div>
-      <h3>Three Themes</h3>
-      <p>Light, Warm, and Dark — toggle from the panel header (☀️ button). Your choice is remembered.</p>
+      <h3>Two Themes</h3>
+      <p>Ocean (light) and Graphite (dark) — toggle from the panel header. Your choice is remembered across the panel and the workspace.</p>
     </div>
   </div>
 
@@ -527,12 +532,13 @@
       <div class="step-num">7</div>
       <div class="step-body">
         <h3><span class="step-icon">✍️</span> Improve your resume bullets (optional)</h3>
-        <p>After analyzing a job, click <strong>Improve Resume Bullets</strong>. The AI rewrites each bullet in your resume to better match the language and priorities of that specific role.</p>
+        <p>After analyzing a job, click <strong>Improve Resume Bullets</strong>. The AI rewrites each bullet in your resume to better match the language and priorities of that specific role, and the projected score next to the ring shows how much the tailoring helps.</p>
         <p>You'll see a before/after comparison for each bullet. You can:</p>
         <ul style="margin: 8px 0 8px 20px; font-size:14px; color: var(--mid);">
           <li>Edit the rewritten version directly in the panel</li>
           <li>Click ↻ to regenerate with a different angle</li>
           <li>Toggle skill chips to include or exclude specific skills from the rewrite</li>
+          <li>Pull in ranked bullets from your <strong>Bullet Bank</strong> — your own past bullets, tagged by skill and ranked against this posting</li>
           <li>Check/uncheck bullets to include them in the tailored resume download</li>
         </ul>
         <div class="step-tip">💡 You can also add brand-new bullets from scratch using the custom bullet generator at the bottom — describe what you did in plain language and the AI polishes it.</div>
@@ -552,9 +558,18 @@
     <div class="step">
       <div class="step-num">9</div>
       <div class="step-body">
-        <h3><span class="step-icon">📌</span> Track your application</h3>
-        <p>Click <strong>Save Job</strong> to bookmark it. After applying, click <strong>Mark as Applied</strong> — it records the job with a timestamp.</p>
-        <p>Use the <strong>Notes</strong> field to jot down recruiter names, interview dates, or follow-up reminders. All your saved and applied jobs are in the <strong>Saved</strong> tab.</p>
+        <h3><span class="step-icon">📌</span> Track your applications</h3>
+        <p>Every job you analyze is saved to the <strong>Job tracker</strong> automatically, and when you submit an application the extension usually detects it and marks the job as applied on its own — there's also a <strong>Mark as Applied</strong> button for when it can't. Land back on a job you've already done and a banner tells you when you applied.</p>
+        <p>In the tracker you can set the <strong>application status</strong> (Applied → Recruiter reached out → In interview → Offer), add notes, follow-up dates and priorities, search and filter everything, export it all to CSV, and read the <strong>insights</strong>: weekly activity, callback rate by role and score, which sources actually convert, and how much tailoring lifts your score.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <h3><span class="step-icon">💼</span> Optimize your LinkedIn profile (optional)</h3>
+        <p>Open the <strong>LinkedIn</strong> tab in the workspace and import your profile using LinkedIn's own <strong>"Save to PDF"</strong> (on your profile: More → Save to PDF), the data-export ZIP, or plain paste. The extension never touches linkedin.com itself.</p>
+        <p>You'll get a LinkedIn-style preview you can edit in place, plus per-section and per-role improvement suggestions grounded in your resume and targeted at the jobs you actually apply to.</p>
       </div>
     </div>
 
@@ -604,7 +619,7 @@
     <div class="hobby-emoji">🛠️</div>
     <div class="hobby-body">
       <h3>Built as a hobby project</h3>
-      <p>JobMatch AI is developed and maintained by one person in their spare time. It's completely free and open source. If you run into a bug, have a feature idea, or want to contribute code — GitHub is the place. All feedback is welcome.</p>
+      <p>JobMatch AI is developed and maintained by one person in their spare time. It's completely free and open source. The easiest way to reach the developer is the <strong>contact form on the extension's About page</strong> — queries are typically answered within two weeks. Bugs, feature ideas, and code contributions are equally welcome on GitHub.</p>
       <div class="hobby-btns">
         <a class="hobby-btn hobby-btn-primary" href="https://github.com/wadekarg/JobMatchAI/issues/new?template=bug_report.md" target="_blank" rel="noopener">🐛 Report a Bug</a>
         <a class="hobby-btn hobby-btn-secondary" href="https://github.com/wadekarg/JobMatchAI/issues/new?template=feature_request.md" target="_blank" rel="noopener">💡 Request a Feature</a>
@@ -624,31 +639,32 @@
 <div class="page">
 
   <div class="meta">
-    <strong>Privacy Policy</strong> &nbsp;·&nbsp; Last updated: June 1, 2026 &nbsp;·&nbsp; Extension version 1.0.7
+    <strong>Privacy Policy</strong> &nbsp;·&nbsp; Last updated: September 7, 2026 &nbsp;·&nbsp; Extension version 1.5.5
   </div>
 
   <div class="highlight-box">
-    🔒 Short version: Your resume and personal data stay on your device. Nothing is sent to us or any third party — only to the AI provider you choose and configure yourself.
+    🔒 Short version: Your resume and personal data stay on your device. AI analysis goes directly from your browser to the provider you configure with your own key. The only things our own server ever receives are an employer name for public H1B lookups, and feedback you explicitly choose to send us.
   </div>
 
   <div class="policy-section">
     <h2><span class="ph">📋</span> 1. What This Extension Does</h2>
-    <p>JobMatch AI is a Chrome browser extension that helps job seekers analyze job postings against their resume, look up an employer's H1B / PERM sponsorship history, auto-fill job applications, generate cover letters (with <code>.docx</code> / <code>.pdf</code> export), improve and tailor resume bullets, download tailored resumes, and track applied jobs. All processing happens locally in your browser, through the AI API provider you select and configure, or through a small public-data lookup endpoint described in Section 3.</p>
+    <p>JobMatch AI is a Chrome browser extension that helps job seekers analyze job postings against their resume with a transparent match score, look up an employer's H1B / PERM sponsorship history, auto-fill job applications, generate cover letters (with <code>.docx</code> / <code>.pdf</code> export), improve and tailor resume bullets with a reusable bullet bank, download tailored resumes, optimize their LinkedIn profile from an export they provide, and track applications in a job tracker. All processing happens locally in your browser, through the AI API provider you select and configure, or through the small endpoints described in Sections 3 and 4.</p>
   </div>
 
   <div class="policy-section">
     <h2><span class="ph">💾</span> 2. Data We Collect and Store</h2>
-    <p>JobMatch AI stores the following data <strong>locally on your device</strong> using Chrome's built-in <code>chrome.storage.local</code> API. This data never leaves your device except as described in Section 3.</p>
+    <p>JobMatch AI stores the following data <strong>locally on your device</strong> using Chrome's built-in <code>chrome.storage.local</code> API. This data never leaves your device except as described in Sections 3 and 4.</p>
     <ul>
       <li><strong>Resume data</strong> — your name, contact info, skills, work experience, education, and any other content from your uploaded resume (PDF or DOCX). If you upload a DOCX file, the raw file bytes are also stored locally to enable tailored resume generation.</li>
       <li><strong>Q&amp;A answers</strong> — pre-configured answers to common job application questions (work authorization, demographics, salary expectations, etc.).</li>
       <li><strong>AI provider settings</strong> — the provider you selected, your API key, chosen model, temperature, and any custom model id you typed in. As a convenience, JobMatch AI also remembers one API key per provider so switching providers auto-fills the right key. All of this is stored locally and only transmitted to the AI provider's own servers. A "Clear saved keys" link in Settings wipes the remembered keys at any time.</li>
-      <li><strong>Theme preference</strong> — your chosen panel theme (Light, Warm, or Dark) so it persists across sessions.</li>
-      <li><strong>Job analysis cache</strong> — analysis results for recently viewed job postings, stored to avoid redundant API calls (up to 50 entries, automatically trimmed).</li>
+      <li><strong>Theme preference</strong> — your chosen theme (Ocean or Graphite) so it persists across sessions.</li>
+      <li><strong>Job analysis cache</strong> — analysis results for recently viewed job postings, stored to avoid redundant API calls (automatically trimmed).</li>
       <li><strong>H1B / PERM data cache</strong> — recently fetched employer sponsorship data is cached locally to avoid redundant lookups. No personal information about you is stored in this cache — only public employer-level approval counts.</li>
-      <li><strong>Applied jobs &amp; saved jobs</strong> — a list of jobs you've marked as applied or saved, including job title, company, location, salary, match score, and the job URL.</li>
-      <li><strong>Job notes</strong> — any free-text notes you type into the extension for individual job postings.</li>
-      <li><strong>Resume bullet preferences</strong> — your per-bullet skill inclusion and exclusion choices when using the Resume Bullet Improver. These are used only to guide AI generation and are not stored persistently between sessions.</li>
+      <li><strong>Job tracker data</strong> — the jobs you've analyzed, saved, or applied to, including job title, company, location, salary, match score, the job URL, and any tracking details you set: application status, notes, follow-up dates, priorities.</li>
+      <li><strong>Bullet bank</strong> — resume bullet points ingested from your own uploaded resume, together with the skill tags the AI assigns them, kept per resume profile so they can be reused across applications.</li>
+      <li><strong>LinkedIn profile import</strong> — if you use the LinkedIn Profile Optimizer, the profile text you provide (via LinkedIn's "Save to PDF", its data-export ZIP, or pasting) and the improvement suggestions generated for it are stored locally. See Section 5.</li>
+      <li><strong>Resume bullet preferences</strong> — your per-bullet skill inclusion and exclusion choices when using the Resume Bullet Improver. These are used only to guide AI generation.</li>
       <li><strong>Tailored resume counter</strong> — a simple integer used to generate unique filenames for downloaded resumes. No resume content is stored in this counter.</li>
     </ul>
   </div>
@@ -661,6 +677,8 @@
       <li><strong>AutoFill Application</strong> — sends detected form field labels and your resume/Q&amp;A profile to generate answers.</li>
       <li><strong>Generate Cover Letter</strong> — sends the job description and your resume profile to generate a tailored cover letter.</li>
       <li><strong>Improve Resume Bullets</strong> — sends individual resume bullet points, the job description, and your skill inclusion/exclusion preferences so the AI respects which skills to reference or avoid.</li>
+      <li><strong>Bullet Bank tagging and ranking</strong> — sends your own resume bullets to tag them with the skills they demonstrate, and ranks them against the job description of the posting you're viewing.</li>
+      <li><strong>LinkedIn profile analysis</strong> — sends the LinkedIn profile text you provided, together with your resume profile and the jobs you've applied to, to generate section-by-section improvement suggestions (see Section 5).</li>
       <li><strong>Generate Tailored Resume</strong> — uses locally stored bullet improvements to edit your DOCX file. No additional AI call is made at download time.</li>
       <li><strong>Add Custom Bullet</strong> — sends your rough description, target role, job description, and skill preferences to generate a polished bullet point.</li>
     </ul>
@@ -671,33 +689,52 @@
       <li><strong>H1B / PERM sponsorship lookup</strong> — when a job page mentions sponsorship-related phrases, the extension sends the <strong>employer name only</strong> to a small Cloudflare Worker (<code>jobmatchai-h1b.wadekargajanan.workers.dev</code>) that returns aggregate sponsorship data sourced from <strong>public USCIS and DOL OFLC datasets</strong>. The worker logs no personally identifying information and never receives your resume, profile, API key, or browsing history — only the employer name being looked up.</li>
     </ul>
 
-    <p><strong>We do not operate any backend server that stores your personal data.</strong> The H1B lookup endpoint is a stateless public-data proxy. No JobMatch AI server receives, stores, or processes your resume, profile, or AI prompts.</p>
+    <p><strong>No JobMatch AI server receives, stores, or processes your resume, profile, API key, or AI prompts.</strong> The H1B lookup endpoint is a stateless public-data proxy. The only data our server ever stores is feedback you explicitly choose to send, described in Section 4.</p>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">🚫</span> 4. Data We Do NOT Collect</h2>
+    <h2><span class="ph">💬</span> 4. Feedback You Choose to Send</h2>
+    <p>The extension's <strong>About page contains a contact form</strong>, and when you uninstall the extension an optional <strong>goodbye page</strong> opens where you can tell us why you left. Both are entirely optional — <strong>nothing is ever sent unless you press Send</strong>, and the goodbye page can simply be closed.</p>
+    <p>If you do send feedback, the following is transmitted to and stored on a server operated by the developer (a Cloudflare Worker with a small database), so that we can read it and reply:</p>
+    <ul>
+      <li><strong>Your name and email</strong> — required on the contact form so we can respond; optional on the uninstall page (anonymous uninstall feedback is accepted).</li>
+      <li><strong>Your message</strong>, the feedback category, the extension version, and the name of the AI provider you use (never the key) — the last two purely to help diagnose issues.</li>
+      <li><strong>A salted, one-way hash of your IP address</strong> — kept only for spam rate-limiting. Your actual IP address is not stored, and the hash cannot be reversed into it.</li>
+    </ul>
+    <p>Feedback is used solely to respond to you and improve the extension. It is never sold, shared, or used for marketing. To have your feedback deleted, email the address you used it from or open a GitHub issue, and it will be removed.</p>
+  </div>
+
+  <div class="policy-section">
+    <h2><span class="ph">💼</span> 5. LinkedIn Profile Optimizer</h2>
+    <p>The LinkedIn optimizer works <strong>only on data you hand it yourself</strong>: your own profile exported via LinkedIn's built-in "Save to PDF" or "Get a copy of your data" features, or text you paste in. The extension <strong>never logs in to, reads, scrapes, or automates linkedin.com</strong> in any way.</p>
+    <p>Your imported profile and its suggestions are stored locally on your device (Section 2) and sent only to the AI provider you configured when you click Improve (Section 3). You can delete the imported profile at any time from the LinkedIn tab.</p>
+  </div>
+
+  <div class="policy-section">
+    <h2><span class="ph">🚫</span> 6. Data We Do NOT Collect</h2>
     <ul>
       <li>We do <strong>not</strong> collect analytics, usage statistics, or telemetry of any kind.</li>
       <li>We do <strong>not</strong> track which job sites you visit.</li>
       <li>We do <strong>not</strong> share any data with advertisers or data brokers.</li>
       <li>We do <strong>not</strong> have access to your Chrome browsing history.</li>
-      <li>We do <strong>not</strong> transmit your resume or personal information to any server we operate.</li>
+      <li>We do <strong>not</strong> transmit your resume or personal information to any server we operate — the only exception is feedback you explicitly submit (Section 4).</li>
       <li>We do <strong>not</strong> store or log data from AI provider responses beyond what is shown in the extension UI and cached locally.</li>
+      <li>We do <strong>not</strong> log the contents of feedback messages in server logs — they go straight to the database described in Section 4.</li>
     </ul>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">🔐</span> 5. Permissions Used and Why</h2>
+    <h2><span class="ph">🔐</span> 7. Permissions Used and Why</h2>
     <ul>
       <li><strong>storage</strong> — to save your resume profile, Q&amp;A answers, settings, job history, and analysis cache locally on your device.</li>
       <li><strong>activeTab</strong> — to read the job description and detect form fields on the current tab when you click Analyze Job or AutoFill.</li>
       <li><strong>webNavigation</strong> — to detect all frames (including iframes) within a tab, required to autofill job application forms embedded in third-party iframes (e.g. Greenhouse, Lever).</li>
-      <li><strong>Host permissions</strong> (specific AI provider domains + the JobMatch AI public-data worker) — to make direct API calls from your browser to (1) the AI provider you select (only that provider is ever contacted for AI), and (2) the public-data Cloudflare Worker described in Section 3, contacted only to look up H1B / PERM sponsorship data for the employer on the current page.</li>
+      <li><strong>Host permissions</strong> (specific AI provider domains + the JobMatch AI worker) — to make direct API calls from your browser to (1) the AI provider you select (only that provider is ever contacted for AI), and (2) the Cloudflare Worker described in Sections 3 and 4, contacted only to look up H1B / PERM sponsorship data for the employer on the current page, and to deliver feedback you explicitly submit.</li>
     </ul>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">🗝️</span> 6. Your API Key</h2>
+    <h2><span class="ph">🗝️</span> 8. Your API Key</h2>
     <p>Your AI provider API key is stored locally in <code>chrome.storage.local</code> on your device. It is only ever sent to the API endpoint of the provider you selected — never to any other server. We recommend:</p>
     <ul>
       <li>Using an API key with only the minimum permissions required by your provider.</li>
@@ -707,35 +744,36 @@
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">📁</span> 7. Resume File Storage</h2>
+    <h2><span class="ph">📁</span> 9. Resume File Storage</h2>
     <p>If you upload a DOCX resume, the raw file bytes are stored locally in <code>chrome.storage.local</code> to enable the Tailored Resume feature, which edits your DOCX file directly in the browser without sending the raw file to any server. PDF resumes are parsed for text only; the raw PDF bytes are not stored.</p>
-    <p>You can remove your stored resume at any time from the Profile page within the extension, or by removing the extension entirely.</p>
+    <p>You can remove your stored resume at any time with the <strong>Delete resume</strong> button on the Profile page within the extension, or by removing the extension entirely.</p>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">🗑️</span> 8. How to Delete Your Data</h2>
+    <h2><span class="ph">🗑️</span> 10. How to Delete Your Data</h2>
     <p>All data stored by JobMatch AI can be deleted at any time:</p>
     <ul>
-      <li><strong>Individual data</strong> — clear your resume, Q&amp;A answers, or settings from within the extension's Profile &amp; Settings page.</li>
+      <li><strong>Individual data</strong> — delete your resume, LinkedIn import, Q&amp;A answers, tracker entries, or settings from within the extension's workspace pages.</li>
+      <li><strong>Feedback you sent us</strong> — request deletion by email or GitHub issue (Section 4).</li>
       <li><strong>All data</strong> — go to <code>chrome://extensions</code> → JobMatch AI → click the three-dot menu → <strong>Remove extension</strong>. This deletes all locally stored data immediately.</li>
       <li>Alternatively, go to <code>chrome://settings/siteData</code>, search for the extension, and clear its storage.</li>
     </ul>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">👶</span> 9. Children's Privacy</h2>
+    <h2><span class="ph">👶</span> 11. Children's Privacy</h2>
     <p>JobMatch AI is intended for use by adults seeking employment. We do not knowingly collect any information from children under the age of 13.</p>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">📝</span> 10. Changes to This Policy</h2>
+    <h2><span class="ph">📝</span> 12. Changes to This Policy</h2>
     <p>If we make material changes to this privacy policy, we will update the "Last updated" date at the top of this page. Continued use of the extension after any changes constitutes acceptance of the updated policy.</p>
   </div>
 
   <div class="policy-section">
-    <h2><span class="ph">✉️</span> 11. Contact & About</h2>
+    <h2><span class="ph">✉️</span> 13. Contact & About</h2>
     <p>JobMatch AI is a <strong>personal hobby project</strong> — built and maintained by one person in their spare time. There is no company, no support team, and no paid tier. It is completely free and open source.</p>
-    <p>If you have questions about this privacy policy, found a bug, or want to request a feature, the best place is GitHub:</p>
+    <p>If you have questions about this privacy policy, found a bug, or want to request a feature, use the <strong>contact form on the extension's About page</strong> (the developer aims to respond within two weeks) or GitHub:</p>
     <div class="hobby-btns" style="margin-top:12px;">
       <a class="hobby-btn hobby-btn-primary" href="https://github.com/wadekarg/JobMatchAI/issues/new" target="_blank" rel="noopener">🐛 Open an Issue</a>
       <a class="hobby-btn hobby-btn-secondary" href="https://github.com/wadekarg/JobMatchAI" target="_blank" rel="noopener">⭐ View on GitHub</a>
